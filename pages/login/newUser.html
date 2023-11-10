@@ -49,7 +49,8 @@
                 }
                 xhttp.open("POST", "/api/newUser", true);
                 xhttp.setRequestHeader("Content-type", "application/json");
-                xhttp.send(`{"username": "${uname}", "password": "${pass}"}`);
+                console.log(JSON.parse(JSON.stringify({username: uname, password: pass})));
+                xhttp.send(JSON.stringify({username: uname, password: pass}));
 
                 // always return false so we stay on the page
                 return false;
