@@ -14,6 +14,7 @@
     <body lang="en">
         <h1>Othello</h1>
         <h2>Create Account</h2>
+        <a href='/login'>I already have an account</a>
         <form method="POST" onsubmit="return sendForm()">
             <label>
                 Username: 
@@ -49,7 +50,7 @@
                 }
                 xhttp.open("POST", "/api/newUser", true);
                 xhttp.setRequestHeader("Content-type", "application/json");
-                console.log(JSON.parse(JSON.stringify({username: uname, password: pass})));
+                xhttp.withCredentials = true;
                 xhttp.send(JSON.stringify({username: uname, password: pass}));
 
                 // always return false so we stay on the page

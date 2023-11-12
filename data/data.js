@@ -2,6 +2,36 @@ const db = require('./dbquery');
 const helper = require('../dbhelper');
 const config = require('../config');
 
+// Make a new session for user registration
+async function newRegSess(token) {
+  // Query for insertion
+  const result = await db.query(
+    'INSERT INTO register_session (session_token) VALUES (?)',
+    [token]
+  );
+  // Return success if inserted
+  if (result.affectedRows > 0) {
+    return { inserted: true, id: result.insertId };
+  }
+  // Errors
+  return { inserted: false };
+}
+
+// Verify user registration session
+async function checkRegSess(id) {
+  // Query 
+  const rows = await db.query(
+    'SELECT * FROM register_session WHERE id=?',
+    [id]
+  );
+  const data = helper.emptyOrRows(rows);
+  // Session does not exist
+  if (data.length == 0) {
+    return {hash: false};
+  }
+  return {hash: data[0].session_token};
+}
+
 // Check if a username exists already
 async function getUserExists(username) {
   // Query for like usernames
@@ -11,7 +41,7 @@ async function getUserExists(username) {
   );
   const data = helper.emptyOrRows(rows);
   // Username does not yet exist
-  if (rows.length == 0) {
+  if (data.length == 0) {
     return {exists: false};
   }
   // Username already exists
@@ -34,6 +64,8 @@ async function insertNewUser(username, password) {
 }
 
 module.exports = {
+  newRegSess,
+  checkRegSess,
   getUserExists,
   insertNewUser
 }
