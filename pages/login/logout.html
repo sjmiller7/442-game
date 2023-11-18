@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Logout | Othello</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta charset="UTF-8">
+    </head>
+    <body lang="en">
+        <h1>Othello</h1>
+        <h2>Logout</h2>
+        <div id="err"></div>
+        <script>
+            // Ajax call to logout endpoint
+            const xhttp = new XMLHttpRequest();
+            xhttp.onload = function() {
+                let response = JSON.parse(this.responseText);
+                if (response.error) {
+                    let paragraph = document.createElement('p');
+                    let err = document.querySelector('#err');
+                    paragraph.innerText = response.error;
+                    paragraph.style.color = 'red';
+                    err.appendChild(paragraph);
+                }
+                else {
+                    window.location.href = "/login";
+                }
+            }
+            xhttp.open("POST", "/api/logout", true);
+            xhttp.setRequestHeader("Content-type", "application/json");
+            xhttp.withCredentials = true;
+            xhttp.send();
+        </script>
+    </body>
+</html>

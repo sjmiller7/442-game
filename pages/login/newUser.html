@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Create Account | Othello</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta charset="UTF-8">
+        <style>
+            label {
+                display: block;
+                margin-bottom: 15px;
+            }
+        </style>
+    </head>
+    <body lang="en">
+        <h1>Othello</h1>
+        <h2>Create Account</h2>
+        <a href='/login'>I already have an account</a>
+        <form method="POST" onsubmit="return sendForm()">
+            <label>
+                Username: 
+                <input type="text" name="username" id="username">
+            </label>
+            <label>
+                Password: 
+                <input type="password" name="password" id="password">
+            </label>
+            <button type="submit">Create</button>
+        </form>
+        <div id="feedback"></div>
+        <script>
+            function sendForm() {
+                // Get values
+                var uname = document.querySelector('#username').value;
+                var pass = document.querySelector('#password').value;
+
+                // Ajax call to new user endpoint
+                const xhttp = new XMLHttpRequest();
+                xhttp.onload = function() {
+                    let response = JSON.parse(this.responseText);
+                    let paragraph = document.createElement('p');
+                    let feedback = document.querySelector('#feedback');
+                    if (response.error) {
+                        paragraph.innerText = response.error;
+                        paragraph.style.color = 'red';
+                    }
+                    else {
+                        paragraph.innerHTML = "Your account has been created. <a href='/login'>Please log in.</a>";
+                    }
+                    feedback.appendChild(paragraph);
+                }
+                xhttp.open("POST", "/api/newUser", true);
+                xhttp.setRequestHeader("Content-type", "application/json");
+                xhttp.withCredentials = true;
+                xhttp.send(JSON.stringify({username: uname, password: pass}));
+
+                // always return false so we stay on the page
+                return false;
+            }
+        </script>
+    </body>
+</html>
