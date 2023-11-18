@@ -218,7 +218,7 @@ app.get('/othello/logout', (req, res) => {
 // 404 err
 app.get('*', (req, res) => {
     // redirect lost souls to the lobby
-    return res.sendFile(path.join(__dirname, '/pages/lobby/lobby.html'));
+    return res.send('<p>This page does not exist.</p><p><a href="/othello/lobby">Go to lobby</a></p><p><a href="/login">Go to login</a></p>');
 })
 
 
