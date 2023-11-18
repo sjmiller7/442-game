@@ -15,16 +15,47 @@
         <h1>Othello</h1>
         <h2>Login</h2>
         <a href='/newUser'>I don't have an account</a>
-        <form>
+        <form method="POST" onsubmit="return sendForm()">
             <label>
                 Username: 
                 <input type="text" name="username" id="username">
             </label>
             <label>
                 Password: 
-                <input type="text" name="password" id="password">
+                <input type="password" name="password" id="password">
             </label>
             <input type="submit" value="Login">
         </form>
+        <script>
+            function sendForm() {
+                // Get values
+                var uname = document.querySelector('#username').value;
+                var pass = document.querySelector('#password').value;
+
+                // Ajax call to login user endpoint
+                const xhttp = new XMLHttpRequest();
+                xhttp.onload = function() {
+                    console.log(this.responseText);
+                    let response = JSON.parse(this.responseText);
+                    if (response.error) {
+                        let paragraph = document.createElement('p');
+                        let feedback = document.querySelector('#feedback');
+                        paragraph.innerText = response.error;
+                        paragraph.style.color = 'red';
+                        feedback.appendChild(paragraph);
+                    }
+                    else {
+                        window.location.href = "/othello/lobby";
+                    }
+                }
+                xhttp.open("POST", "/api/login", true);
+                xhttp.setRequestHeader("Content-type", "application/json");
+                xhttp.withCredentials = true;
+                xhttp.send(JSON.stringify({username: uname, password: pass}));
+
+                // always return false so we stay on the page
+                return false;
+            }
+        </script>
     </body>
 </html>

@@ -17,11 +17,13 @@ var usernameValidate = () => check('username').escape().notEmpty().isLength({ ma
 var passValidate = () => check('password').escape().notEmpty().isLength({ max: 45 }).trim();
 
 
-// API requests
+// API requests (outide of login)
 // Tester to make sure server is connected
-router.get('/test', (req, res) => {
-    return res.send(biz.test());
+router.get('/test', async (req, res) => {
+    let test = await biz.test();
+    return res.send(test);
 });
+// XSS tester
 router.post('/test', usernameValidate(), (req, res) => {
     const result = validationResult(req);
     if (result.isEmpty()) {
@@ -43,6 +45,13 @@ router.post('/newUser', usernameValidate(), passValidate(), async (req, res) => 
             if (tokenValidate) {
                 // Create user
                 let result = await biz.newUser(req.body.username, req.body.password);
+
+                // Clear cookies
+                if (result.inserted) {
+                    res.clearCookie('register_token');
+                    res.clearCookie('visitor_id');
+                }
+
                 return res.send(result);
             }
         }
@@ -51,12 +60,44 @@ router.post('/newUser', usernameValidate(), passValidate(), async (req, res) => 
     }
     // If errors, send message
     return res.send({ error: 'Invalid username or password. Try again.' })
-})
+});
+
+// Login
+router.post('/login', usernameValidate(), passValidate(), async (req, res) => {
+    // Checks that there were no validation errors
+    const result = validationResult(req);
+    if (result.isEmpty()) {
+        // Login
+        let result = await biz.login(req.body.username, req.body.password, req.headers['user-agent'], req.ip, Date.now());
+        
+        // If credentials invalid, send error
+        if (result.error) {
+            return res.send(result);
+        }
+        // Put token in cookie
+        res.cookie('session_token', result.token, {
+            httpOnly: true,
+            sameSite: 'strict',
+            overwrite: true,
+            maxAge: 3600000
+        });
+        // Send valid message
+        return res.send({success: true});
+    }
+    // If errors, send message
+    return res.send({ error: 'Invalid username or password. Try again.' })
+});
 
 
-// Pages 
+
+// Pages (outside of login)
 // Create account
 app.get('/newUser', async (req, res) => {
+    // if they're actually logged in, send them to log out first
+    if (req.cookies.session_token) {
+        return res.sendFile(path.join(__dirname, '/pages/login/logout.html'));
+    }
+
     // Generate register token
     let tokenData = await biz.createRegToken(req.headers['user-agent'], req.ip, Date.now());
 
@@ -80,10 +121,105 @@ app.get('/newUser', async (req, res) => {
     return res.sendFile(path.join(__dirname, '/pages/login/newUser.html'));
 });
 
-// Log in
+// Login
 app.get('/login', (req, res) => {
+    // if they're actually logged in, send them to log out first
+    if (req.cookies.session_token) {
+        return res.sendFile(path.join(__dirname, '/pages/login/logout.html'));
+    }
+
     return res.sendFile(path.join(__dirname, '/pages/login/login.html'));
 });
+
+// Login middleware starts here
+
+// API requests (inside of login)
+// Check that they're logged in
+router.use('/', async (req, res, next) => {
+    let token = req.cookies.session_token;
+    if (token) {
+        let result = biz.checkSessToken(token, req.headers['user-agent'], req.ip);
+        if (result) {
+            // Logged in, proceed
+            next();
+        }
+        else {
+            // Force logout bc token might be stolen and we want the real user to be safe
+            let result = await biz.logout(token);
+            if (result.deleted) {
+                res.clearCookie('session_token');
+            }
+
+            // badSession is so we can check in AJAX results and just auto redirect if we want
+            // Error is in case we don't check haha
+            res.send({badSession: true, error: 'Your session timed out. Please <a href="/login">log in</a>.'});
+        }
+    }
+    else {
+        // badSession is so we can check in AJAX results and just auto redirect if we want
+        // Error is in case we don't check haha
+        res.send({badSession: true, error: 'Your session timed out. Please <a href="/login">log in</a>.'});
+    }
+})
+
+// Logout
+router.post('/logout', async (req, res) => {
+    // Get session token
+    let token = req.cookies.session_token;
+    if (token) {
+        let result = await biz.logout(token);
+        if (result.deleted) {
+            res.clearCookie('session_token');
+        }
+        return res.send(result);
+    }
+    else {
+        // Token error
+        return res.send({ error: 'There was an issue with your session. Refresh and try again.' })
+    }
+});
+
+
+// Pages (inside of login)
+// Check that they're logged in
+app.use('/othello', async (req, res, next) => {
+    let token = req.cookies.session_token;
+    if (token) {
+        let result = biz.checkSessToken(token, req.headers['user-agent'], req.ip);
+        if (result) {
+            // Logged in, proceed
+            next();
+        }
+        else {
+            // Force logout bc token might be stolen and we want the real user to be safe
+            let result = await biz.logout(token);
+            if (result.deleted) {
+                res.clearCookie('session_token');
+            }
+
+            res.sendFile(path.join(__dirname, '/pages/login/login.html'));
+        }
+    }
+    else {
+        res.sendFile(path.join(__dirname, '/pages/login/login.html'));
+    }
+})
+
+// Lobby
+app.get('/othello/lobby', (req, res) => {
+    return res.sendFile(path.join(__dirname, '/pages/lobby/lobby.html'));
+});
+
+// Logout
+app.get('/othello/logout', (req, res) => {
+    return res.sendFile(path.join(__dirname, '/pages/login/logout.html'));
+});
+
+// 404 err
+app.get('*', (req, res) => {
+    // redirect lost souls to the lobby
+    return res.sendFile(path.join(__dirname, '/pages/lobby/lobby.html'));
+})
 
 
 // Finishing setup
