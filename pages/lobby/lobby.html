@@ -11,5 +11,17 @@
         <h1>Othello</h1>
         <h2>Lobby</h2>
         <p>test</p>
+
+        <script>
+            // Chat connection
+            const ws = new WebSocket('ws://localhost:8080/lobby')
+            ws.onopen = () => {
+                ws.send('hello world')
+            }
+
+            ws.onmessage = (message) => {
+                console.log(message.data)
+            }
+        </script>
     </body>
 </html>

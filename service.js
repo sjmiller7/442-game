@@ -5,11 +5,17 @@ const path = require('path');
 const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
-var app = express();
-app.use(express.json());
-app.use(cookieParser());
-var router = express.Router();
-var biz = require('./business/business');
+const http = require('http');
+const WebSocket = require('ws');
+const url = require('url');
+var app = express(); // Express app
+const server = http.createServer(app); // server for ws
+const lobbyWSS = new WebSocket.Server({ noServer: true }); // websockets server (lobby)
+const gameWSS = new WebSocket.Server({ noServer: true }); // websockets server (games)
+app.use(express.json()); // JSON parsing for input
+app.use(cookieParser()); // Cookie parsing
+var router = express.Router(); // Router for /api stuff. Anything on router is api, anything on app is a page
+var biz = require('./business/business'); // Business layer
 
 
 // Validators/sanitizers with express-validator
@@ -221,6 +227,55 @@ app.get('*', (req, res) => {
     return res.send('<p>This page does not exist.</p><p><a href="/othello/lobby">Go to lobby</a></p><p><a href="/login">Go to login</a></p>');
 })
 
+
+
+// WebSockets
+// Lobby chat connection
+lobbyWSS.on('connection', function connection(ws) {
+    // Error handling
+    ws.on('error', console.error);
+
+    // Message handling
+    ws.on('message', (message) => {
+        console.log('received: %s', message);
+        ws.send(`Hello, you sent -> ${message}`);
+    });
+
+    // Notify of connection
+    ws.send('connected');
+});
+
+// Handle routing of lobby vs game chats
+server.on('upgrade', async function upgrade(request, socket, head) {
+    // Authenticate
+    let cookieToken = biz.getTokenCookie(request.headers.cookie);
+    if (cookieToken) {
+        let result = await biz.checkSessToken(cookieToken, request.headers['user-agent'], socket.remoteAddress);
+        if (result) {
+            // Authenticated, proceed with connection
+            const { pathname } = url.parse(request.url);
+
+            if (pathname === '/lobby') {
+                lobbyWSS.handleUpgrade(request, socket, head, function done(ws) {
+                lobbyWSS.emit('connection', ws, request);
+                });
+            } else if (pathname === '/game') {
+                gameWSS.handleUpgrade(request, socket, head, function done(ws) {
+                gameWSS.emit('connection', ws, request);
+                });
+            } else {
+                socket.destroy();
+            }
+        } else {
+            socket.destroy();
+        }
+    } else {
+        socket.destroy();
+    }
+});
+
+// Start server for ws
+server.listen(8080)
 
 // Finishing setup
 app.use('/api', router);

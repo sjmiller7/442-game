@@ -218,6 +218,23 @@ async function logout(token) {
     return {deleted: true}
 }
 
+// Parsing a cookie (for the one place I can't use cookieParser with ws)
+function getTokenCookie(cookie) {
+    let name = "session_token=";
+    let decodedCookie = decodeURIComponent(cookie);
+    let ca = decodedCookie.split(';');
+    for(let i = 0; i <ca.length; i++) {
+      let c = ca[i];
+      while (c.charAt(0) == ' ') {
+        c = c.substring(1);
+      }
+      if (c.indexOf(name) == 0) {
+        return c.substring(name.length, c.length);
+      }
+    }
+    return "";
+  }
+
 module.exports = {
     test,
     createRegToken,
@@ -226,4 +243,5 @@ module.exports = {
     login,
     checkSessToken,
     logout,
+    getTokenCookie,
 }
