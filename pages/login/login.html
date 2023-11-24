@@ -26,6 +26,7 @@
             </label>
             <input type="submit" value="Login">
         </form>
+        <div id="feedback"></div>
         <script>
             function sendForm() {
                 // Get values
@@ -35,7 +36,6 @@
                 // Ajax call to login user endpoint
                 const xhttp = new XMLHttpRequest();
                 xhttp.onload = function() {
-                    console.log(this.responseText);
                     let response = JSON.parse(this.responseText);
                     if (response.error) {
                         let paragraph = document.createElement('p');

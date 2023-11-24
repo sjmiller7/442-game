@@ -74,7 +74,7 @@ router.post('/login', usernameValidate(), passValidate(), async (req, res) => {
     const result = validationResult(req);
     if (result.isEmpty()) {
         // Login
-        let result = await biz.login(req.body.username, req.body.password, req.headers['user-agent'], req.ip, Date.now());
+        let result = await biz.login(req.body.username, req.body.password, req.headers['user-agent'], req.ip, Date.now() + 3600000);
         
         // If credentials invalid, send error
         if (result.error) {
@@ -101,11 +101,11 @@ router.post('/login', usernameValidate(), passValidate(), async (req, res) => {
 app.get('/newUser', async (req, res) => {
     // if they're actually logged in, send them to log out first
     if (req.cookies.session_token) {
-        return res.sendFile(path.join(__dirname, '/pages/login/logout.html'));
+        return res.redirect('/othello/logout');
     }
 
     // Generate register token
-    let tokenData = await biz.createRegToken(req.headers['user-agent'], req.ip, Date.now());
+    let tokenData = await biz.createRegToken(req.headers['user-agent'], req.ip, Date.now() + 3600000);
 
     // Put token in cookie
     res.cookie('register_token', tokenData.token, {
@@ -131,7 +131,7 @@ app.get('/newUser', async (req, res) => {
 app.get('/login', (req, res) => {
     // if they're actually logged in, send them to log out first
     if (req.cookies.session_token) {
-        return res.sendFile(path.join(__dirname, '/pages/login/logout.html'));
+        return res.redirect('/othello/logout');
     }
 
     return res.sendFile(path.join(__dirname, '/pages/login/login.html'));
@@ -185,6 +185,17 @@ router.post('/logout', async (req, res) => {
     }
 });
 
+// Lobby info (TO BE FLESHED OUT)
+router.get('/lobby', async (req, res) => {
+    // Get session token
+    let token = req.cookies.session_token;
+
+    // Get user info
+    let userInfo = await biz.getUserInfo(token);
+
+    return res.send({ user: userInfo });
+});
+
 
 // Pages (inside of login)
 // Check that they're logged in
@@ -203,11 +214,11 @@ app.use('/othello', async (req, res, next) => {
                 res.clearCookie('session_token');
             }
 
-            res.sendFile(path.join(__dirname, '/pages/login/login.html'));
+            res.redirect('/login');
         }
     }
     else {
-        res.sendFile(path.join(__dirname, '/pages/login/login.html'));
+        res.redirect('/login');
     }
 })
 
@@ -222,27 +233,29 @@ app.get('/othello/logout', (req, res) => {
 });
 
 // 404 err
-app.get('*', (req, res) => {
+// May be commented out because it was overriding some methods for literally no reason
+/*app.get('*', (req, res) => {
     // redirect lost souls to the lobby
     return res.send('<p>This page does not exist.</p><p><a href="/othello/lobby">Go to lobby</a></p><p><a href="/login">Go to login</a></p>');
-})
+})*/
 
 
 
 // WebSockets
 // Lobby chat connection
-lobbyWSS.on('connection', function connection(ws) {
+lobbyWSS.on('connection', async function connection(ws) {
     // Error handling
     ws.on('error', console.error);
 
     // Message handling
     ws.on('message', (message) => {
-        console.log('received: %s', message);
-        ws.send(`Hello, you sent -> ${message}`);
+        console.log(JSON.parse(message));
+        ws.send(`${message}`);
     });
 
     // Notify of connection
-    ws.send('connected');
+    ws.send('You are connected to the lobby chat.');
+    
 });
 
 // Handle routing of lobby vs game chats
@@ -276,6 +289,9 @@ server.on('upgrade', async function upgrade(request, socket, head) {
 
 // Start server for ws
 server.listen(8080)
+
+// Periodic check to delete expired sessions (1 minute interval)
+setInterval(async function () { console.log(await biz.delExpSess())}, 60000);
 
 // Finishing setup
 app.use('/api', router);

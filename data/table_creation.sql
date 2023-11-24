@@ -10,6 +10,7 @@ SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,N
 -- -----------------------------------------------------
 -- Schema othellodb
 -- -----------------------------------------------------
+DROP SCHEMA IF EXISTS `othellodb` ;
 
 -- -----------------------------------------------------
 -- Schema othellodb
@@ -31,7 +32,7 @@ CREATE TABLE IF NOT EXISTS `othellodb`.`user` (
   UNIQUE INDEX `username_UNIQUE` (`username` ASC) VISIBLE,
   UNIQUE INDEX `uID_UNIQUE` (`uID` ASC) VISIBLE)
 ENGINE = InnoDB
-AUTO_INCREMENT = 15
+AUTO_INCREMENT = 31
 DEFAULT CHARACTER SET = utf8mb3;
 
 
@@ -170,7 +171,9 @@ CREATE TABLE IF NOT EXISTS `othellodb`.`register_session` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `session_token` VARCHAR(60) NOT NULL,
   PRIMARY KEY (`id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+AUTO_INCREMENT = 53
+DEFAULT CHARACTER SET = utf8mb3;
 
 
 -- -----------------------------------------------------
@@ -181,14 +184,14 @@ DROP TABLE IF EXISTS `othellodb`.`session` ;
 CREATE TABLE IF NOT EXISTS `othellodb`.`session` (
   `uID` INT NOT NULL,
   `session_token` VARCHAR(60) NOT NULL,
+  `expires` DATETIME NOT NULL,
   PRIMARY KEY (`uID`),
   UNIQUE INDEX `session_token_UNIQUE` (`session_token` ASC) VISIBLE,
   CONSTRAINT `user_session`
     FOREIGN KEY (`uID`)
-    REFERENCES `othellodb`.`user` (`uID`)
-    ON DELETE NO ACTION
-    ON UPDATE NO ACTION)
-ENGINE = InnoDB;
+    REFERENCES `othellodb`.`user` (`uID`))
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb3;
 
 
 SET SQL_MODE=@OLD_SQL_MODE;

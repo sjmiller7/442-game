@@ -95,11 +95,11 @@ async function updateUserStatus(uID, status) {
 }
 
 // Make a new session for user login
-async function newUserSess(id, token) {
+async function newUserSess(id, token, date) {
   // Query for insertion
   const result = await db.query(
-    'INSERT INTO session (uID, session_token) VALUES (?, ?)',
-    [id, token]
+    'INSERT INTO session (uID, session_token, expires) VALUES (?, ?, FROM_UNIXTIME(? / 1000))',
+    [id, token, date]
   );
   // Return success if inserted
   if (result.affectedRows > 0) {
@@ -139,6 +139,50 @@ async function delSess(id) {
   return { deleted: false };
 }
 
+// Delete all expired sessions
+async function delExpSess() {
+    // Query for expired sessions
+    const sessRows = await db.query(
+      'SELECT uID FROM session WHERE expires <= NOW();',
+      []
+    );
+    const sessData = helper.emptyOrRows(sessRows);
+    // No expired sessions? we're done
+    if (sessData.length == 0) {
+      return true;
+    }
+    console.log(sessData);
+
+    // Convert ids to query
+    let convertedIDs = sessData.map(function (sess) { return sess.uID; });
+
+    // Dynamic amount of question marks for prepared statements
+    // For why, follow this github thread: https://github.com/sidorares/node-mysql2/issues/1524
+    let placeholders = Array(convertedIDs.length).fill("?").join();
+
+    // Delete expired sessions
+    const delResult = await db.query(
+      'DELETE FROM session WHERE uID IN (' + placeholders + ')',
+      convertedIDs
+    );
+    // Return failure if not deleted
+    if (delResult.affectedRows == 0) {
+      return false;
+    }
+
+    // Change statuses to offline
+    const statResult = await db.query(
+      'UPDATE user SET status="offline" WHERE uID IN (' + placeholders + ')',
+      convertedIDs
+    );
+    // Return failure if not updated
+    if (statResult.affectedRows == 0) {
+      return false;
+    }
+  
+    // Everything's done
+    return true;
+}
 
 module.exports = {
   newRegSess,
@@ -149,5 +193,6 @@ module.exports = {
   updateUserStatus,
   newUserSess,
   checkSess,
-  delSess
+  delSess,
+  delExpSess
 }

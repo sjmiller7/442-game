@@ -8,20 +8,53 @@
         </style>
     </head>
     <body lang="en">
+        <div id="#feedback" style="display: none;"></div>
         <h1>Othello</h1>
         <h2>Lobby</h2>
-        <p>test</p>
+        <p id="welcome">loading . . . </p>
 
         <script>
-            // Chat connection
-            const ws = new WebSocket('ws://localhost:8080/lobby')
-            ws.onopen = () => {
-                ws.send('hello world')
-            }
+            let ws;
+            // Get lobby setup info
+            const xhttp = new XMLHttpRequest();
+                xhttp.onload = function() {
+                    console.log(this.responseText);
+                    // Error handling
+                    let response = JSON.parse(this.responseText);
+                    if (response.badSession) {
+                        window.location.href = "/othello/login";
+                    }
+                    else if (response.error){
+                        let paragraph = document.createElement('p');
+                        let feedback = document.querySelector('#feedback');
+                        paragraph.innerText = response.error;
+                        paragraph.style.color = 'red';
+                        feedback.appendChild(paragraph);
+                        feedback.style.display = 'block';
+                    }
+                    // Handling response
+                    else {
+                        // Welcome
+                        let welcome = document.querySelector('#welcome');
+                        welcome.innerText = `Welcome, ${response.user.username}`;
 
-            ws.onmessage = (message) => {
-                console.log(message.data)
-            }
+                        // Chat connection
+                        ws = new WebSocket('ws://localhost:8080/lobby')
+                        ws.onopen = () => {
+                            console.log(document.cookie);
+                            ws.send(JSON.stringify({type:'connection', user: response.user.username}));
+                        }
+                        ws.onmessage = (message) => {
+                            console.log(message.data)
+                        }
+                    }
+                }
+                xhttp.open("GET", "/api/lobby", true);
+                xhttp.setRequestHeader("Content-type", "application/json");
+                xhttp.withCredentials = true;
+                xhttp.send();
+
+            
         </script>
     </body>
 </html>

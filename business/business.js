@@ -57,7 +57,7 @@ async function createRegToken(uAgent, ip, date) {
 async function checkRegToken(token, id, uAgent, ip) {
     // Check token data
     var decoded = await jwt.verify(token, process.env.TOKEN_KEY);
-    if (decoded.user_agent != uAgent || decoded.address != ip || parseInt(decoded.date) > Date.now() + 3600000) {
+    if (decoded.user_agent != uAgent || decoded.address != ip || parseInt(decoded.date) <= Date.now()) {
         return false;
     }
 
@@ -135,6 +135,12 @@ async function login(username, password, uAgent, ip, date) {
     if (!status.updated) {
         return {error: `There was an error logging you in. Please try again.`}
     }
+
+    // Check for any existing sessions
+    let sess = await db.checkSess(user.uID);
+    if (sess.hash) {
+        return {error: `There was an error logging you in. Please check that you are not logged in on another device and then try again in one minute.`}
+    }
     
     // Create jwt
     const token = jwt.sign(
@@ -160,7 +166,7 @@ async function login(username, password, uAgent, ip, date) {
     
     // Store hash
     if (hash.length > 0) {
-        let sessionCreated = await db.newUserSess(user.uID, hash);
+        let sessionCreated = await db.newUserSess(user.uID, hash, date);
         if (sessionCreated.inserted) {
             // Send back token
             return {token: token};
@@ -177,7 +183,7 @@ async function login(username, password, uAgent, ip, date) {
 async function checkSessToken(token, uAgent, ip) {
     // Check token data
     var decoded = await jwt.verify(token, process.env.TOKEN_KEY);
-    if (decoded.user_agent != uAgent || decoded.address != ip || parseInt(decoded.date) > Date.now() + 3600000) {
+    if (decoded.user_agent != uAgent || decoded.address != ip || parseInt(decoded.date) <= Date.now()) {
         return false;
     }
 
@@ -233,7 +239,20 @@ function getTokenCookie(cookie) {
       }
     }
     return "";
-  }
+}
+
+// Getting user info from their token
+async function getUserInfo(token) {
+    var decoded = await jwt.verify(token, process.env.TOKEN_KEY);
+
+    return {uID: decoded.uID, username: decoded.username}
+}
+
+// Deleting all expired sessions
+async function delExpSess() {
+    var deleted = await db.delExpSess();
+    return {deleted: deleted}
+}
 
 module.exports = {
     test,
@@ -244,4 +263,6 @@ module.exports = {
     checkSessToken,
     logout,
     getTokenCookie,
+    getUserInfo,
+    delExpSess
 }
