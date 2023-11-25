@@ -248,9 +248,19 @@ lobbyWSS.on('connection', async function connection(ws) {
     ws.on('error', console.error);
 
     // Message handling
-    ws.on('message', (message) => {
-        console.log(JSON.parse(message));
-        ws.send(`${message}`);
+    ws.on('message', async (message) => {
+        // Store message
+        let messageJS = JSON.parse(message);
+        if (messageJS.type === 'msg') {
+            let messageInsert = await biz.storeLobbyMsg(messageJS);
+        }
+
+        // Send message along
+        lobbyWSS.clients.forEach(function each(client) {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(`${message}`);
+            }
+          });
     });
 
     // Notify of connection
@@ -291,7 +301,7 @@ server.on('upgrade', async function upgrade(request, socket, head) {
 server.listen(8080)
 
 // Periodic check to delete expired sessions (1 minute interval)
-setInterval(async function () { console.log(await biz.delExpSess())}, 60000);
+setInterval(async function () { await biz.delExpSess()}, 60000);
 
 // Finishing setup
 app.use('/api', router);

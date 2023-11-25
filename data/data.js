@@ -151,7 +151,6 @@ async function delExpSess() {
     if (sessData.length == 0) {
       return true;
     }
-    console.log(sessData);
 
     // Convert ids to query
     let convertedIDs = sessData.map(function (sess) { return sess.uID; });
@@ -184,6 +183,20 @@ async function delExpSess() {
     return true;
 }
 
+async function insertLobbyMsg(id, message, date) {
+  // Query for insertion
+  const result = await db.query(
+    'INSERT INTO lobby_message (uID, message, date) VALUES (?, ?, FROM_UNIXTIME(? / 1000))',
+    [id, message, date]
+  );
+  // Return success if inserted
+  if (result.affectedRows > 0) {
+    return true;
+  }
+  // Errors
+  return false;
+}
+
 module.exports = {
   newRegSess,
   checkRegSess,
@@ -194,5 +207,6 @@ module.exports = {
   newUserSess,
   checkSess,
   delSess,
-  delExpSess
+  delExpSess,
+  insertLobbyMsg
 }

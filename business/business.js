@@ -117,7 +117,7 @@ async function login(username, password, uAgent, ip, date) {
     // Get user from db
     let user = await db.getUser(username)
     if (user.error) {
-        return {error: `This user does not exist. <a href='/newUser'>Create Account</a>`}
+        return {error: `This user does not exist.`}
     }
 
     // Check password
@@ -251,7 +251,13 @@ async function getUserInfo(token) {
 // Deleting all expired sessions
 async function delExpSess() {
     var deleted = await db.delExpSess();
-    return {deleted: deleted}
+    return {deleted: deleted};
+}
+
+// Store messages from the lobby
+async function storeLobbyMsg(message) {
+    var inserted = await db.insertLobbyMsg(message.id, message.msg, message.date);
+    return {inserted: inserted};
 }
 
 module.exports = {
@@ -264,5 +270,6 @@ module.exports = {
     logout,
     getTokenCookie,
     getUserInfo,
-    delExpSess
+    delExpSess,
+    storeLobbyMsg
 }
