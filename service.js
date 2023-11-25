@@ -5,11 +5,17 @@ const path = require('path');
 const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
-var app = express();
-app.use(express.json());
-app.use(cookieParser());
-var router = express.Router();
-var biz = require('./business/business');
+const http = require('http');
+const WebSocket = require('ws');
+const url = require('url');
+var app = express(); // Express app
+const server = http.createServer(app); // server for ws
+const lobbyWSS = new WebSocket.Server({ noServer: true }); // websockets server (lobby)
+const gameWSS = new WebSocket.Server({ noServer: true }); // websockets server (games)
+app.use(express.json()); // JSON parsing for input
+app.use(cookieParser()); // Cookie parsing
+var router = express.Router(); // Router for /api stuff. Anything on router is api, anything on app is a page
+var biz = require('./business/business'); // Business layer
 
 
 // Validators/sanitizers with express-validator
@@ -68,7 +74,7 @@ router.post('/login', usernameValidate(), passValidate(), async (req, res) => {
     const result = validationResult(req);
     if (result.isEmpty()) {
         // Login
-        let result = await biz.login(req.body.username, req.body.password, req.headers['user-agent'], req.ip, Date.now());
+        let result = await biz.login(req.body.username, req.body.password, req.headers['user-agent'], req.ip, Date.now() + 3600000);
         
         // If credentials invalid, send error
         if (result.error) {
@@ -95,11 +101,11 @@ router.post('/login', usernameValidate(), passValidate(), async (req, res) => {
 app.get('/newUser', async (req, res) => {
     // if they're actually logged in, send them to log out first
     if (req.cookies.session_token) {
-        return res.sendFile(path.join(__dirname, '/pages/login/logout.html'));
+        return res.redirect('/othello/logout');
     }
 
     // Generate register token
-    let tokenData = await biz.createRegToken(req.headers['user-agent'], req.ip, Date.now());
+    let tokenData = await biz.createRegToken(req.headers['user-agent'], req.ip, Date.now() + 3600000);
 
     // Put token in cookie
     res.cookie('register_token', tokenData.token, {
@@ -125,7 +131,7 @@ app.get('/newUser', async (req, res) => {
 app.get('/login', (req, res) => {
     // if they're actually logged in, send them to log out first
     if (req.cookies.session_token) {
-        return res.sendFile(path.join(__dirname, '/pages/login/logout.html'));
+        return res.redirect('/othello/logout');
     }
 
     return res.sendFile(path.join(__dirname, '/pages/login/login.html'));
@@ -179,6 +185,17 @@ router.post('/logout', async (req, res) => {
     }
 });
 
+// Lobby info (TO BE FLESHED OUT)
+router.get('/lobby', async (req, res) => {
+    // Get session token
+    let token = req.cookies.session_token;
+
+    // Get user info
+    let userInfo = await biz.getUserInfo(token);
+
+    return res.send({ user: userInfo });
+});
+
 
 // Pages (inside of login)
 // Check that they're logged in
@@ -197,11 +214,11 @@ app.use('/othello', async (req, res, next) => {
                 res.clearCookie('session_token');
             }
 
-            res.sendFile(path.join(__dirname, '/pages/login/login.html'));
+            res.redirect('/login');
         }
     }
     else {
-        res.sendFile(path.join(__dirname, '/pages/login/login.html'));
+        res.redirect('/login');
     }
 })
 
@@ -216,11 +233,75 @@ app.get('/othello/logout', (req, res) => {
 });
 
 // 404 err
-app.get('*', (req, res) => {
+// May be commented out because it was overriding some methods for literally no reason
+/*app.get('*', (req, res) => {
     // redirect lost souls to the lobby
-    return res.sendFile(path.join(__dirname, '/pages/lobby/lobby.html'));
-})
+    return res.send('<p>This page does not exist.</p><p><a href="/othello/lobby">Go to lobby</a></p><p><a href="/login">Go to login</a></p>');
+})*/
 
+
+
+// WebSockets
+// Lobby chat connection
+lobbyWSS.on('connection', async function connection(ws) {
+    // Error handling
+    ws.on('error', console.error);
+
+    // Message handling
+    ws.on('message', async (message) => {
+        // Store message
+        let messageJS = JSON.parse(message);
+        if (messageJS.type === 'msg') {
+            let messageInsert = await biz.storeLobbyMsg(messageJS);
+        }
+
+        // Send message along
+        lobbyWSS.clients.forEach(function each(client) {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(`${message}`);
+            }
+          });
+    });
+
+    // Notify of connection
+    ws.send('You are connected to the lobby chat.');
+    
+});
+
+// Handle routing of lobby vs game chats
+server.on('upgrade', async function upgrade(request, socket, head) {
+    // Authenticate
+    let cookieToken = biz.getTokenCookie(request.headers.cookie);
+    if (cookieToken) {
+        let result = await biz.checkSessToken(cookieToken, request.headers['user-agent'], socket.remoteAddress);
+        if (result) {
+            // Authenticated, proceed with connection
+            const { pathname } = url.parse(request.url);
+
+            if (pathname === '/lobby') {
+                lobbyWSS.handleUpgrade(request, socket, head, function done(ws) {
+                lobbyWSS.emit('connection', ws, request);
+                });
+            } else if (pathname === '/game') {
+                gameWSS.handleUpgrade(request, socket, head, function done(ws) {
+                gameWSS.emit('connection', ws, request);
+                });
+            } else {
+                socket.destroy();
+            }
+        } else {
+            socket.destroy();
+        }
+    } else {
+        socket.destroy();
+    }
+});
+
+// Start server for ws
+server.listen(8080)
+
+// Periodic check to delete expired sessions (1 minute interval)
+setInterval(async function () { await biz.delExpSess()}, 60000);
 
 // Finishing setup
 app.use('/api', router);

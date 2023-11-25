@@ -57,7 +57,7 @@ async function createRegToken(uAgent, ip, date) {
 async function checkRegToken(token, id, uAgent, ip) {
     // Check token data
     var decoded = await jwt.verify(token, process.env.TOKEN_KEY);
-    if (decoded.user_agent != uAgent || decoded.address != ip || parseInt(decoded.date) > Date.now() + 3600000) {
+    if (decoded.user_agent != uAgent || decoded.address != ip || parseInt(decoded.date) <= Date.now()) {
         return false;
     }
 
@@ -117,7 +117,7 @@ async function login(username, password, uAgent, ip, date) {
     // Get user from db
     let user = await db.getUser(username)
     if (user.error) {
-        return {error: `This user does not exist. <a href='/newUser'>Create Account</a>`}
+        return {error: `This user does not exist.`}
     }
 
     // Check password
@@ -134,6 +134,12 @@ async function login(username, password, uAgent, ip, date) {
     let status = await db.updateUserStatus(user.uID, 'online');
     if (!status.updated) {
         return {error: `There was an error logging you in. Please try again.`}
+    }
+
+    // Check for any existing sessions
+    let sess = await db.checkSess(user.uID);
+    if (sess.hash) {
+        return {error: `There was an error logging you in. Please check that you are not logged in on another device and then try again in one minute.`}
     }
     
     // Create jwt
@@ -160,7 +166,7 @@ async function login(username, password, uAgent, ip, date) {
     
     // Store hash
     if (hash.length > 0) {
-        let sessionCreated = await db.newUserSess(user.uID, hash);
+        let sessionCreated = await db.newUserSess(user.uID, hash, date);
         if (sessionCreated.inserted) {
             // Send back token
             return {token: token};
@@ -177,7 +183,7 @@ async function login(username, password, uAgent, ip, date) {
 async function checkSessToken(token, uAgent, ip) {
     // Check token data
     var decoded = await jwt.verify(token, process.env.TOKEN_KEY);
-    if (decoded.user_agent != uAgent || decoded.address != ip || parseInt(decoded.date) > Date.now() + 3600000) {
+    if (decoded.user_agent != uAgent || decoded.address != ip || parseInt(decoded.date) <= Date.now()) {
         return false;
     }
 
@@ -218,6 +224,42 @@ async function logout(token) {
     return {deleted: true}
 }
 
+// Parsing a cookie (for the one place I can't use cookieParser with ws)
+function getTokenCookie(cookie) {
+    let name = "session_token=";
+    let decodedCookie = decodeURIComponent(cookie);
+    let ca = decodedCookie.split(';');
+    for(let i = 0; i <ca.length; i++) {
+      let c = ca[i];
+      while (c.charAt(0) == ' ') {
+        c = c.substring(1);
+      }
+      if (c.indexOf(name) == 0) {
+        return c.substring(name.length, c.length);
+      }
+    }
+    return "";
+}
+
+// Getting user info from their token
+async function getUserInfo(token) {
+    var decoded = await jwt.verify(token, process.env.TOKEN_KEY);
+
+    return {uID: decoded.uID, username: decoded.username}
+}
+
+// Deleting all expired sessions
+async function delExpSess() {
+    var deleted = await db.delExpSess();
+    return {deleted: deleted};
+}
+
+// Store messages from the lobby
+async function storeLobbyMsg(message) {
+    var inserted = await db.insertLobbyMsg(message.id, message.msg, message.date);
+    return {inserted: inserted};
+}
+
 module.exports = {
     test,
     createRegToken,
@@ -226,4 +268,8 @@ module.exports = {
     login,
     checkSessToken,
     logout,
+    getTokenCookie,
+    getUserInfo,
+    delExpSess,
+    storeLobbyMsg
 }

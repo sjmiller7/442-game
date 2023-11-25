@@ -5,11 +5,172 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta charset="UTF-8">
         <style>
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                padding: 0;
+                margin: 0;
+            }
+            main {
+                width: 100%;
+                display: flex;
+            }
+            main > div {
+                max-height: 750vh;
+                flex-grow: 1;
+                border: 2px solid grey;
+                padding: 5px;
+            }
+            #invitations {
+                width: 35%;
+            }
+            #guests {
+                width: 30%;
+            }
+            #chat {
+                width: 35%;
+            }
+            #messages {
+                height: 50vh;
+                overflow-y: scroll;
+            }
+            #messages > p {
+                text-align: center;
+            }
+            .chatMsg {
+                background-color: lightgrey;
+                padding: 5px;
+                margin-bottom: 10px;
+            }
+            .chatMsg > p {
+                margin: 0px 5px;
+            }
+            .chatMsg > p:first-of-type {
+                font-weight: bold;
+            }
+            .chatMsg > p:last-of-type {
+                padding-left: 10px;
+            }
+            #chat input {
+                margin-bottom: 5px;
+                float: right;
+            }
+            #chat #messageIn {
+                width: 100%;
+            }
+            @media only screen and (max-width: 700px) {
+                main {
+                    flex-direction: column;
+                }
+                #chat, #guests, #invitations {
+                    width: 100%;
+                }
+            }
         </style>
     </head>
     <body lang="en">
-        <h1>Othello</h1>
-        <h2>Lobby</h2>
-        <p>test</p>
+        <header>
+            <div id="#feedback" style="display: none;"></div>
+            <h1>Othello</h1>
+            <h2>Lobby</h2>
+            <p id="welcome">loading . . . </p>
+        </header>
+        <main>
+            <div id="invitations">
+                <p>test</p>
+                
+            </div>
+            <div id="guests">
+                <p>test</p>
+                
+            </div>
+            <div id="chat">
+                <h3>Chat</h3>
+                <hr>
+                <div id="messages"></div>
+                <form method="POST" onsubmit="return sendChat()">
+                    <input type="text" name="messageIn" id="messageIn" maxlength="250" required>
+                    <input type="submit" value="Send">
+                </form>
+            </div>
+        </main>
+
+        <script>
+            let ws;
+            let user;
+            // Get lobby setup info
+            const xhttp = new XMLHttpRequest();
+            xhttp.onload = function() {
+                // Error handling
+                let response = JSON.parse(this.responseText);
+                if (response.badSession) {
+                    window.location.href = "/othello/login";
+                }
+                else if (response.error){
+                    let paragraph = document.createElement('p');
+                    let feedback = document.querySelector('#feedback');
+                    paragraph.innerText = response.error;
+                    paragraph.style.color = 'red';
+                    feedback.appendChild(paragraph);
+                    feedback.style.display = 'block';
+                }
+                // Handling response
+                else {
+                    // Save user
+                    user = response.user;
+
+                    // Welcome
+                    let welcome = document.querySelector('#welcome');
+                    welcome.innerText = `Welcome, ${response.user.username}`;
+
+                    // Chat connection
+                    ws = new WebSocket('ws://localhost:8080/lobby')
+                    ws.onopen = () => {
+                        ws.send(JSON.stringify({type:'connection', user: response.user.username}));
+                    }
+                    ws.onmessage = (message) => {
+                        // Get place to put message
+                        let messages = document.querySelector('#messages');
+                        // Convert message to json
+                        let messageJS = JSON.parse(message.data);
+                        switch (messageJS.type) {
+                            case "connection":
+                                let connMsg = document.createElement('p');
+                                connMsg.innerText = `${messageJS.user} is online.`;
+                                messages.appendChild(connMsg); 
+                                break;
+                            case "msg":
+                                let box = document.createElement('div');
+                                box.classList.add('chatMsg');
+                                let att = document.createElement('p');
+                                let date = new Date(messageJS.date);
+                                let dateTxt = `${date.getMonth()}-${date.getDay()}-${date.getFullYear()}`;
+                                let timeTxt = `${date.getHours()}:${date.getMinutes()}`;
+                                att.innerText = `${messageJS.user} on ${dateTxt} at ${timeTxt}`;
+                                box.appendChild(att);
+                                let msg = document.createElement('p');
+                                msg.innerText = messageJS.msg;
+                                box.appendChild(msg);
+                                messages.appendChild(box); 
+                                messages.scrollTop = messages.scrollHeight;
+                                break;
+                        }
+                    }
+                }
+            }
+            xhttp.open("GET", "/api/lobby", true);
+            xhttp.setRequestHeader("Content-type", "application/json");
+            xhttp.withCredentials = true;
+            xhttp.send();
+
+            function sendChat() {
+                let msg = {type: "msg", user: user.username, id: user.uID, date: Date.now()};
+                msg.msg = document.querySelector('#messageIn').value;
+                ws.send(JSON.stringify(msg))
+                // prevent refresh
+                return false;
+            }
+        </script>
     </body>
 </html>
