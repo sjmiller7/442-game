@@ -260,6 +260,55 @@ async function storeLobbyMsg(message) {
     return {inserted: inserted};
 }
 
+// Getting list of users
+async function getUserList(token) {
+    // Getting uID to exclude user
+    var decoded = await jwt.verify(token, process.env.TOKEN_KEY);
+
+    // Get user list
+    let users = await db.getUserList(decoded.uID);
+
+    return users;
+}
+
+// Invite user to a game
+async function invite(token, id) {
+    // Get uID of from user
+    var decoded = await jwt.verify(token, process.env.TOKEN_KEY);
+
+    // Check that this doesn't exist already
+    var inviteExists = await db.verifyInvite(decoded.uID, id);
+    if (inviteExists) {
+        return {error: 'You already have an invitation with this user. Check your invitations list.'}
+    }
+
+    // Create invitation
+    var createInvite = await db.createInvite(decoded.uID, id);
+    if (!createInvite) {
+        return {error: 'There was an issue making your invitation. Please try again.'}
+    }
+    return [decoded.uID, id];
+}
+
+// Get invites to display for user
+async function getInvites(token) {
+    // Get uID of from user
+    var decoded = await jwt.verify(token, process.env.TOKEN_KEY);
+
+    // Why are these seperate queries/lists? To make UI handling easier. 
+
+    // Why show invitationh status if all of them are pending? preventing confusion ig idk
+
+    // Get invites to this user
+    var toUser = await db.getInvitesTo(decoded.uID);
+
+    // Get invites from this user
+    var fromUser = await db.getInvitesFrom(decoded.uID);
+
+    // Send invites
+    return {to: toUser, from: fromUser};
+}
+
 module.exports = {
     test,
     createRegToken,
@@ -271,5 +320,8 @@ module.exports = {
     getTokenCookie,
     getUserInfo,
     delExpSess,
-    storeLobbyMsg
+    storeLobbyMsg,
+    getUserList,
+    invite,
+    getInvites,
 }

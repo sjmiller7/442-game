@@ -21,7 +21,7 @@ var biz = require('./business/business'); // Business layer
 // Validators/sanitizers with express-validator
 var usernameValidate = () => check('username').escape().notEmpty().isLength({ max: 45 }).trim();
 var passValidate = () => check('password').escape().notEmpty().isLength({ max: 45 }).trim();
-
+var idValidate = () => check('id').escape().notEmpty().isNumeric().trim();
 
 // API requests (outide of login)
 // Tester to make sure server is connected
@@ -185,7 +185,7 @@ router.post('/logout', async (req, res) => {
     }
 });
 
-// Lobby info (TO BE FLESHED OUT)
+// Lobby info
 router.get('/lobby', async (req, res) => {
     // Get session token
     let token = req.cookies.session_token;
@@ -193,8 +193,64 @@ router.get('/lobby', async (req, res) => {
     // Get user info
     let userInfo = await biz.getUserInfo(token);
 
-    return res.send({ user: userInfo });
+    // Get list of users for invitations
+    let online = await biz.getUserList(token);
+
+    // Get list of invitations 
+    let invitations = await biz.getInvites(token);
+
+    return res.send({ user: userInfo, userList: online, invitations: invitations });
 });
+
+// Invite user to a game
+router.post('/invite', idValidate(), async (req, res) => {
+    // Checks that there were no validation errors
+    const result = validationResult(req);
+    if (result.isEmpty()) {
+        // Get session token
+        let token = req.cookies.session_token;
+
+        // Generate invite
+        let invite = await biz.invite(token, req.body.id);
+
+        // Tell clients to refresh their invites if they're involved
+        if (!invite.error) {
+            lobbyWSS.clients.forEach(function each(client) {
+                if (client.readyState === WebSocket.OPEN) {
+                client.send(`{"type": "invite", "users": [${invite}]}`);
+                }
+            });
+        }
+
+        // Send response
+        return res.send(invite);
+    }
+    res.send({error: 'Invalid user. Please try again.'});
+})
+
+// Get users for display
+router.get('/users', async (req, res) => {
+    // Get session token
+    let token = req.cookies.session_token;
+
+    // Get list of users for invitations
+    let online = await biz.getUserList(token);
+
+    // Send response
+    return res.send(online);
+})
+
+// Get invitations for display
+router.get('/invites', async (req, res) => {
+    // Get session token
+    let token = req.cookies.session_token;
+
+    // Get invites for this user
+    let invites = await biz.getInvites(token);
+
+    // Send response
+    return res.send(invites);
+})
 
 
 // Pages (inside of login)
@@ -232,13 +288,6 @@ app.get('/othello/logout', (req, res) => {
     return res.sendFile(path.join(__dirname, '/pages/login/logout.html'));
 });
 
-// 404 err
-// May be commented out because it was overriding some methods for literally no reason
-/*app.get('*', (req, res) => {
-    // redirect lost souls to the lobby
-    return res.send('<p>This page does not exist.</p><p><a href="/othello/lobby">Go to lobby</a></p><p><a href="/login">Go to login</a></p>');
-})*/
-
 
 
 // WebSockets
@@ -262,10 +311,6 @@ lobbyWSS.on('connection', async function connection(ws) {
             }
           });
     });
-
-    // Notify of connection
-    ws.send('You are connected to the lobby chat.');
-    
 });
 
 // Handle routing of lobby vs game chats
@@ -305,6 +350,14 @@ setInterval(async function () { await biz.delExpSess()}, 60000);
 
 // Finishing setup
 app.use('/api', router);
+
+// 404 err
+// May be commented out because it was overriding some methods for literally no reason
+app.get('*', (req, res) => {
+    // redirect lost souls to the lobby'
+    return res.send('<p>This page does not exist.</p><p><a href="/othello/lobby">Go to lobby</a></p><p><a href="/login">Go to login</a></p>');
+})
+
 app.use(cors({
     credentials: true,
     origin: 'http://localhost:5000'
