@@ -252,6 +252,31 @@ router.get('/invites', async (req, res) => {
     return res.send(invites);
 })
 
+// Decline a game invite
+router.put('/decline', idValidate(), async (req, res) => {
+    // Checks that there were no validation errors
+    const result = validationResult(req);
+    if (result.isEmpty()) {
+        // Decline invite
+        let declined = await biz.decline(req.body.id);
+
+        // Tell clients to refresh their invites if they're involved
+        if (!declined.error) {
+            lobbyWSS.clients.forEach(function each(client) {
+                if (client.readyState === WebSocket.OPEN) {
+                // Invite can serve double purpose, since all it's doing is triggering a ui refresh for listed users
+                client.send(`{"type": "invite", "users": [${declined}]}`);
+                }
+            });
+        }
+
+        // Send response
+        return res.send(declined);
+    }
+    res.send({error: 'Invalid user. Please try again.'});
+})
+
+
 
 // Pages (inside of login)
 // Check that they're logged in

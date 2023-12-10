@@ -210,7 +210,7 @@ async function getUserList(uID) {
   return data;
 }
 
-// Verify that an invite exists
+// Verify that an invite exists (from and to)
 async function verifyInvite(from, to) {
   // Query 
   const rows = await db.query(
@@ -223,6 +223,21 @@ async function verifyInvite(from, to) {
     return false;
   }
   return true;
+}
+
+// Verify that an invite exists (id)
+async function verifyInviteId(id) {
+  // Query 
+  const rows = await db.query(
+    'SELECT `from`, `to` FROM invitation WHERE `id`=? AND `status`="pending";',
+    [id]
+  );
+  const data = helper.emptyOrRows(rows);
+  // Invite does not exist
+  if (data.length == 0) {
+    return false;
+  }
+  return data[0];
 }
 
 // Create an invitation
@@ -238,6 +253,21 @@ async function createInvite(from, to) {
   }
   // Errors
   return false;
+}
+
+// Decline an invitation
+async function declineInvite(id) {
+  // Query for update
+  const result = await db.query(
+    'UPDATE invitation SET status="declined" WHERE id=?',
+    [id]
+  );
+  // Return success if updated
+  if (result.affectedRows > 0) {
+    return { updated: true };
+  }
+  // Errors
+  return { updated: false };
 }
 
 // Get invites to a user
@@ -279,7 +309,9 @@ module.exports = {
   insertLobbyMsg,
   getUserList,
   verifyInvite,
+  verifyInviteId,
   createInvite,
+  declineInvite,
   getInvitesTo,
   getInvitesFrom
 }

@@ -309,6 +309,25 @@ async function getInvites(token) {
     return {to: toUser, from: fromUser};
 }
 
+// Decline an invitation
+async function decline(id) {
+    // Check that this exists
+    //      also get the ids so we know whose uis to refresh
+    var inviteExists = await db.verifyInviteId(id);
+    if (!inviteExists) {
+        return {error: 'This invitation does not exist. Please invite the user to a game.'}
+    }
+
+    // Decline invitation
+    var declineInvite = await db.declineInvite(id);
+    if (!declineInvite.updated) {
+        return {error: 'There was an issue declining your invitation. Please try again.'}
+    }
+
+    // Send back the users whose uis need to be refreshed
+    return [inviteExists.to, inviteExists.from];
+}
+
 module.exports = {
     test,
     createRegToken,
@@ -324,4 +343,5 @@ module.exports = {
     getUserList,
     invite,
     getInvites,
+    decline
 }

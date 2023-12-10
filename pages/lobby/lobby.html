@@ -373,21 +373,21 @@
                     let accept = document.createElement('td');
                     let btn = document.createElement('button');
                     btn.setAttribute('data-invite', invite.id);
-                    btn.addEventListener("click", () => {accept(btn)});
+                    btn.addEventListener("click", () => {acceptInvite(btn)});
                     btn.innerText = 'Accept';
                     accept.append(btn);
                     row.append(accept);
                     let decline = document.createElement('td');
                     let btn2 = document.createElement('button');
                     btn2.setAttribute('data-invite', invite.id);
-                    btn2.addEventListener("click", () => {decline(btn2)});
+                    btn2.addEventListener("click", () => {declineInvite(btn2)});
                     btn2.innerText = 'Decline';
                     decline.append(btn2);
                     row.append(decline);
                     tableTo.append(row);
                 }
 
-                // Invites to this user
+                // Invites from this user
                 let tableFrom = document.querySelector('#fromInvites table tbody');
                 tableFrom.innerHTML = ''; // just clear out the current contents so we can refresh
                 for (let invite of from) {
@@ -401,6 +401,30 @@
                     tableFrom.append(row);
                 }
             }
+
+            
+            // Decline invitation
+            function declineInvite(btn) {
+                const xhttp = new XMLHttpRequest();
+                xhttp.onload = function() {
+                    // Error handling
+                    let response = JSON.parse(this.responseText);
+                    if (response.badSession) {
+                        window.location.href = "/othello/login";
+                    }
+                    else if (response.error) {
+                        sendFeedback(response.error);
+                    }
+                    else {
+                        // Do nothing-- websockets handles notifying to update invites
+                    }
+                }
+                xhttp.open("PUT", "/api/decline", true);
+                xhttp.setRequestHeader("Content-type", "application/json");
+                xhttp.withCredentials = true;
+                xhttp.send(JSON.stringify({id: btn.dataset.invite}));
+            }
+
         </script>
     </body>
 </html>
