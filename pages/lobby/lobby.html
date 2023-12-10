@@ -12,24 +12,30 @@
                 padding: 0;
                 margin: 0;
             }
+            h1, h2, h3, h4, p {
+                margin: 5px 0px 10px;
+            }
             main {
                 width: 100%;
                 display: flex;
             }
             main > div {
-                max-height: 750vh;
+                max-height: 90vh;
                 flex-grow: 1;
                 border: 2px solid grey;
                 padding: 5px;
             }
             #invitations {
                 width: 35%;
+                overflow-y: auto;
             }
             #guests {
                 width: 30%;
+                overflow-y: auto;
             }
             #chat {
                 width: 35%;
+                overflow-y: auto;
             }
             #messages {
                 height: 50vh;
@@ -59,6 +65,30 @@
             #chat #messageIn {
                 width: 100%;
             }
+            #users {
+                height: 60vh;
+                overflow-y: scroll;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            th {
+                text-align: left;
+                padding: 5px;
+            }
+            td {
+                padding: 5px;
+            }
+            thead {
+                border-bottom: 2px solid black;
+            }
+            tr:nth-child(even) {
+                background-color: lightgrey;
+            }
+            #toInvites, #fromInvites {
+                height: 25vh;
+            }
             @media only screen and (max-width: 700px) {
                 main {
                     flex-direction: column;
@@ -66,24 +96,65 @@
                 #chat, #guests, #invitations {
                     width: 100%;
                 }
+                #toInvites, #fromInvites {
+                    height: 30vh;
+                }
             }
         </style>
     </head>
     <body lang="en">
         <header>
-            <div id="#feedback" style="display: none;"></div>
+            <div id="feedback" style="display: none;"></div>
             <h1>Othello</h1>
             <h2>Lobby</h2>
             <p id="welcome">loading . . . </p>
         </header>
         <main>
             <div id="invitations">
-                <p>test</p>
-                
+                <h3>Invite to Game</h3>
+                <hr>
+                <div id="users">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Status</th>
+                                <th>Invite</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
             <div id="guests">
-                <p>test</p>
-                
+                <h3>Invitations</h3>
+                <hr>
+                <h4>To You</h4>
+                <div id="toInvites">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Status</th>
+                                <th>Accept</th>
+                                <th>Decline</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <h4>From You</h4>
+                <div id="fromInvites">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
             <div id="chat">
                 <h3>Chat</h3>
@@ -108,17 +179,18 @@
                     window.location.href = "/othello/login";
                 }
                 else if (response.error){
-                    let paragraph = document.createElement('p');
-                    let feedback = document.querySelector('#feedback');
-                    paragraph.innerText = response.error;
-                    paragraph.style.color = 'red';
-                    feedback.appendChild(paragraph);
-                    feedback.style.display = 'block';
+                    sendFeedback(response.error);
                 }
                 // Handling response
                 else {
                     // Save user
                     user = response.user;
+
+                    // Display user list
+                    userList(response.userList);
+
+                    // Display invitations 
+                    invitesList(response.invitations.to, response.invitations.from);
 
                     // Welcome
                     let welcome = document.querySelector('#welcome');
@@ -136,11 +208,14 @@
                         let messageJS = JSON.parse(message.data);
                         switch (messageJS.type) {
                             case "connection":
+                                // New user connected to lobby
                                 let connMsg = document.createElement('p');
                                 connMsg.innerText = `${messageJS.user} is online.`;
                                 messages.appendChild(connMsg); 
+                                refreshUsers();
                                 break;
                             case "msg":
+                                // Chat message
                                 let box = document.createElement('div');
                                 box.classList.add('chatMsg');
                                 let att = document.createElement('p');
@@ -155,6 +230,14 @@
                                 messages.appendChild(box); 
                                 messages.scrollTop = messages.scrollHeight;
                                 break;
+                            case "invite": 
+                                // An invitation was sent
+                                if(messageJS.users.includes(user.uID)) {
+                                    // Refresh UI
+                                    refreshInvitations();
+                                    refreshUsers();
+                                }
+                                break;
                         }
                     }
                 }
@@ -164,6 +247,7 @@
             xhttp.withCredentials = true;
             xhttp.send();
 
+            // Sending chat messages
             function sendChat() {
                 let msg = {type: "msg", user: user.username, id: user.uID, date: Date.now()};
                 msg.msg = document.querySelector('#messageIn').value;
@@ -171,6 +255,176 @@
                 // prevent refresh
                 return false;
             }
+
+            // Refresh users list
+            function refreshUsers() {
+                const xhttp = new XMLHttpRequest();
+                xhttp.onload = function() {
+                    // Error handling
+                    let response = JSON.parse(this.responseText);
+                    if (response.badSession) {
+                        window.location.href = "/othello/login";
+                    }
+                    else if (response.error) {
+                        sendFeedback(response.error);
+                    }
+                    else {
+                        // Show the invites on the UI
+                        userList(response)
+                    }
+                }
+                xhttp.open("GET", "/api/users", true);
+                xhttp.setRequestHeader("Content-type", "application/json");
+                xhttp.withCredentials = true;
+                xhttp.send();
+            }
+
+            // Display user list for invitations
+            function userList(users) {
+                let table = document.querySelector('#users table tbody');
+                table.innerHTML = ''; // just clear out the current contents so we can refresh
+                for (let person of users) {
+                    let row = document.createElement('tr');
+                    let name = document.createElement('td');
+                    name.innerText = person.username;
+                    row.appendChild(name);
+                    let status = document.createElement('td');
+                    status.innerText = person.status;
+                    row.appendChild(status);
+                    let invite = document.createElement('td');
+                    let btn = document.createElement('button');
+                    btn.setAttribute('data-uid', person.uID);
+                    btn.addEventListener("click", () => {inviteUser(btn)});
+                    btn.innerText = 'Invite';
+                    invite.append(btn);
+                    row.append(invite);
+                    table.append(row);
+                }
+            }
+
+            // Invite user to a game
+            function inviteUser(btn) {
+                const xhttp = new XMLHttpRequest();
+                xhttp.onload = function() {
+                    // Error handling
+                    let response = JSON.parse(this.responseText);
+                    if (response.badSession) {
+                        window.location.href = "/othello/login";
+                    }
+                    else if (response.error) {
+                        sendFeedback(response.error);
+                    }
+                    else {
+                        // Do nothing-- websockets handles notifying to update invites
+                    }
+                }
+                xhttp.open("POST", "/api/invite", true);
+                xhttp.setRequestHeader("Content-type", "application/json");
+                xhttp.withCredentials = true;
+                xhttp.send(JSON.stringify({id: btn.dataset.uid}));
+            }
+
+            // Display feedback / errors
+            function sendFeedback(err) {
+                let paragraph = document.createElement('p');
+                let feedback = document.querySelector('#feedback');
+                paragraph.innerText = err;
+                paragraph.style.color = 'red';
+                feedback.appendChild(paragraph);
+                feedback.style.display = 'block';
+                feedback.focus()
+            }
+
+            // Refresh invitations list
+            function refreshInvitations() {
+                const xhttp = new XMLHttpRequest();
+                xhttp.onload = function() {
+                    // Error handling
+                    let response = JSON.parse(this.responseText);
+                    if (response.badSession) {
+                        window.location.href = "/othello/login";
+                    }
+                    else if (response.error) {
+                        sendFeedback(response.error);
+                    }
+                    else {
+                        // Show the invites on the UI
+                        invitesList(response.to, response.from)
+                    }
+                }
+                xhttp.open("GET", "/api/invites", true);
+                xhttp.setRequestHeader("Content-type", "application/json");
+                xhttp.withCredentials = true;
+                xhttp.send();
+            }
+
+            function invitesList(to, from) {
+                // Invites to this user
+                let tableTo = document.querySelector('#toInvites table tbody');
+                tableTo.innerHTML = ''; // just clear out the current contents so we can refresh
+                for (let invite of to) {
+                    let row = document.createElement('tr');
+                    let name = document.createElement('td');
+                    name.innerText = invite.username;
+                    row.appendChild(name);
+                    let status = document.createElement('td');
+                    status.innerText = invite.status;
+                    row.appendChild(status);
+                    let accept = document.createElement('td');
+                    let btn = document.createElement('button');
+                    btn.setAttribute('data-invite', invite.id);
+                    btn.addEventListener("click", () => {acceptInvite(btn)});
+                    btn.innerText = 'Accept';
+                    accept.append(btn);
+                    row.append(accept);
+                    let decline = document.createElement('td');
+                    let btn2 = document.createElement('button');
+                    btn2.setAttribute('data-invite', invite.id);
+                    btn2.addEventListener("click", () => {declineInvite(btn2)});
+                    btn2.innerText = 'Decline';
+                    decline.append(btn2);
+                    row.append(decline);
+                    tableTo.append(row);
+                }
+
+                // Invites from this user
+                let tableFrom = document.querySelector('#fromInvites table tbody');
+                tableFrom.innerHTML = ''; // just clear out the current contents so we can refresh
+                for (let invite of from) {
+                    let row = document.createElement('tr');
+                    let name = document.createElement('td');
+                    name.innerText = invite.username;
+                    row.appendChild(name);
+                    let status = document.createElement('td');
+                    status.innerText = invite.status;
+                    row.appendChild(status);
+                    tableFrom.append(row);
+                }
+            }
+
+            
+            // Decline invitation
+            function declineInvite(btn) {
+                const xhttp = new XMLHttpRequest();
+                xhttp.onload = function() {
+                    // Error handling
+                    let response = JSON.parse(this.responseText);
+                    if (response.badSession) {
+                        window.location.href = "/othello/login";
+                    }
+                    else if (response.error) {
+                        sendFeedback(response.error);
+                    }
+                    else {
+                        // Do nothing-- websockets handles notifying to update invites
+                    }
+                }
+                xhttp.open("PUT", "/api/decline", true);
+                xhttp.setRequestHeader("Content-type", "application/json");
+                xhttp.withCredentials = true;
+                xhttp.send(JSON.stringify({id: btn.dataset.invite}));
+            }
+
         </script>
     </body>
 </html>

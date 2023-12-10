@@ -183,6 +183,7 @@ async function delExpSess() {
     return true;
 }
 
+// Store lobby messages
 async function insertLobbyMsg(id, message, date) {
   // Query for insertion
   const result = await db.query(
@@ -197,6 +198,103 @@ async function insertLobbyMsg(id, message, date) {
   return false;
 }
 
+// Get online users
+async function getUserList(uID) {
+  // Query for other users
+  const rows = await db.query(
+    'SELECT uID, status, username FROM user WHERE uID != ? ORDER BY FIELD(status, "online", "in game", "offline");',
+    [uID]
+  );
+  const data = helper.emptyOrRows(rows);
+  // No error checking-- if there's no users, there's just nothing in the box
+  return data;
+}
+
+// Verify that an invite exists (from and to)
+async function verifyInvite(from, to) {
+  // Query 
+  const rows = await db.query(
+    'SELECT id FROM invitation WHERE (`from`=? AND `to`=? AND `status`="pending") OR (`to`=? AND `from`=? AND `status`="pending")',
+    [from, to, from, to]
+  );
+  const data = helper.emptyOrRows(rows);
+  // Invite does not exist
+  if (data.length == 0) {
+    return false;
+  }
+  return true;
+}
+
+// Verify that an invite exists (id)
+async function verifyInviteId(id) {
+  // Query 
+  const rows = await db.query(
+    'SELECT `from`, `to` FROM invitation WHERE `id`=? AND `status`="pending";',
+    [id]
+  );
+  const data = helper.emptyOrRows(rows);
+  // Invite does not exist
+  if (data.length == 0) {
+    return false;
+  }
+  return data[0];
+}
+
+// Create an invitation
+async function createInvite(from, to) {
+  // Query for insertion
+  const result = await db.query(
+    'INSERT INTO invitation (`from`, `to`, `status`) VALUES (?, ?, "pending")',
+    [from, to]
+  );
+  // Return success if inserted
+  if (result.affectedRows > 0) {
+    return true;
+  }
+  // Errors
+  return false;
+}
+
+// Decline an invitation
+async function declineInvite(id) {
+  // Query for update
+  const result = await db.query(
+    'UPDATE invitation SET status="declined" WHERE id=?',
+    [id]
+  );
+  // Return success if updated
+  if (result.affectedRows > 0) {
+    return { updated: true };
+  }
+  // Errors
+  return { updated: false };
+}
+
+// Get invites to a user
+async function getInvitesTo(uID) {
+  // Query for invites
+  const rows = await db.query(
+    'SELECT id, `from`, username, invitation.status FROM invitation INNER JOIN user ON `from` = uID WHERE `to` = ? AND invitation.status = "pending";',
+    [uID]
+  );
+  const data = helper.emptyOrRows(rows);
+  // No error checking-- if there's no invites, there's just nothing in the box
+  return data;
+}
+
+// Get invites to a user
+async function getInvitesFrom(uID) {
+  // Query for invites
+  const rows = await db.query(
+    'SELECT id, `to`, username, invitation.status FROM invitation INNER JOIN user ON `to` = uID WHERE `from` = ? AND invitation.status = "pending";',
+    [uID]
+  );
+  const data = helper.emptyOrRows(rows);
+  // No error checking-- if there's no invites, there's just nothing in the box
+  return data;
+}
+
+
 module.exports = {
   newRegSess,
   checkRegSess,
@@ -208,5 +306,12 @@ module.exports = {
   checkSess,
   delSess,
   delExpSess,
-  insertLobbyMsg
+  insertLobbyMsg,
+  getUserList,
+  verifyInvite,
+  verifyInviteId,
+  createInvite,
+  declineInvite,
+  getInvitesTo,
+  getInvitesFrom
 }
