@@ -131,11 +131,23 @@ async function login(username, password, uAgent, ip, date) {
     }
 
     // Check that the user isn't supposed to be in a game
-
-    // Update user status
-    let status = await db.updateUserStatus(user.uID, 'online');
-    if (!status.updated) {
-        return {error: `There was an error logging you in. Please try again.`}
+    let inGame = await db.getGamePlayer(user.uID);
+    let userStatus;
+    // Update user status to in game
+    if (inGame) {
+        userStatus = 'in game';
+        let status = await db.updateUserStatus(user.uID, 'in game');
+        if (!status.updated) {
+            return {error: `There was an error logging you in. Please try again.`}
+        }
+    }
+    // Update user status to online
+    else {
+        userStatus = 'online';
+        let status = await db.updateUserStatus(user.uID, 'online');
+        if (!status.updated) {
+            return {error: `There was an error logging you in. Please try again.`}
+        }
     }
 
     // Check for any existing sessions
@@ -171,7 +183,7 @@ async function login(username, password, uAgent, ip, date) {
         let sessionCreated = await db.newUserSess(user.uID, hash, date);
         if (sessionCreated.inserted) {
             // Send back token
-            return {token: token};
+            return {token: token, status: userStatus};
         }
         // Error
         return {error: 'There was an issue creating your session. Please try again.'};
@@ -444,6 +456,61 @@ async function gameInfoPlayer(uID) {
     return {game: {gID: game.gID, turn: game.turn, status: game.status}, board: board.board, pieces: pieces, opponent: opponent};
 }
 
+// Get game info based on game id
+async function gameInfo(gID) {
+    // Get general game info
+    var game = await db.getGame(gID);
+    if (!game) {
+        return {error: 'This game does not exist or has completed. Please return to the <a href="/othello/lobby">lobby</a>.'};
+    }
+
+    // Get board info
+    var board = await db.getBoard(gID);
+    if (!board) {
+        return {error: 'Error retrieving game data. Please contact an admin.'}
+    }
+
+    // Get piece info
+    var piecesArr = await db.getPieces(gID);
+    if (!piecesArr) {
+        return {error: 'Error retrieving game data. Please contact an admin.'}
+    }
+
+    // Reformat piece data into a more processable format for the ui
+    let pieces = {
+        board: [],
+        white: [],
+        black: [],
+    };
+    piecesArr.forEach(function(piece) {
+        switch(piece.status) {
+            case "board":
+                pieces.board.push(piece.id);
+                break;
+            case "white":
+                pieces.white.push(piece.id);
+                break;
+            case "black":
+                pieces.black.push(piece.id);
+                break;
+        }
+    });
+
+    return {game: {gID: game.gID, turn: game.turn, status: game.status}, board: board.board, pieces: pieces};
+}
+
+// Check if the user is supposed to be in a game
+async function inGame(uID) {
+    // Get possible game user is in
+    let inGame = await db.getGamePlayer(uID);
+
+    if (inGame) {
+        return true;
+    }
+
+    return false;
+}
+
 module.exports = {
     test,
     createRegToken,
@@ -463,4 +530,6 @@ module.exports = {
     decline,
     accept,
     gameInfoPlayer,
+    gameInfo,
+    inGame,
 }

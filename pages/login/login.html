@@ -44,8 +44,11 @@
                         paragraph.style.color = 'red';
                         feedback.appendChild(paragraph);
                     }
+                    else if (response.status == 'in game') {
+                        window.location.href = "/othello/game";
+                    }
                     else {
-                        window.location.href = "/othello/lobby";
+                        window.location.href = "/othello/game";
                     }
                 }
                 xhttp.open("POST", "/api/login", true);

@@ -446,6 +446,21 @@ async function getGamePlayer(uID) {
   return data[0];
 }
 
+// Get game info based on a game id
+async function getGame(gID) {
+  // Query 
+  const rows = await db.query(
+    'SELECT * FROM game WHERE gID = ? AND status = "ongoing";',
+    [gID]
+  );
+  const data = helper.emptyOrRows(rows);
+  // Something has gone horrifically wrong / a game doesnt exist
+  if (data.length != 1) {
+    return false;
+  }
+  return data[0];
+}
+
 // Get board info
 async function getBoard(gID) {
   // Query 
@@ -518,6 +533,7 @@ module.exports = {
   createPieces,
   createBoard,
   getGamePlayer,
+  getGame,
   getBoard,
   getPieces,
   getOpponent,

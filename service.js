@@ -87,8 +87,7 @@ router.post('/login', usernameValidate(), passValidate(), async (req, res) => {
             overwrite: true,
             maxAge: 3600000
         });
-        // Send valid message
-        return res.send({success: true});
+        return res.send({status: result.status});
     }
     // If errors, send message
     return res.send({ error: 'Invalid username or password. Try again.' })
@@ -317,6 +316,19 @@ router.get('/game', async (req, res) => {
     return res.send(game);
 });
 
+// Game info refresh
+router.get('/gameUpdate', idValidate(), async (req, res) => {
+    // Checks that there were no validation errors
+    const result = validationResult(req);
+    if (result.isEmpty()) {
+        // Get the game that the user is in
+        let game = await biz.gameInfo(req.query.id);
+
+        return res.send(game);
+    }
+    res.send({error: 'Invalid game. Please try again.'});
+});
+
 
 // Pages (inside of login)
 // Check that they're logged in
@@ -344,24 +356,22 @@ app.use('/othello', async (req, res, next) => {
 });
 
 // Lobby
-app.get('/othello/lobby', (req, res) => {
+app.get('/othello/lobby', async (req, res) => {
+    // Get user info
+    let token = req.cookies.session_token;
+    let userInfo = await biz.getUserInfo(token);
+
+    // Checking that the user isn't supposed to be in a game
+    let inGame = await biz.inGame(userInfo.uID);
+    if (inGame) {
+        res.redirect('/othello/game');
+    }
+
     return res.sendFile(path.join(__dirname, '/pages/lobby/lobby.html'));
 });
 
 // Game
 app.get('/othello/game', (req, res) => {
-    // Regenerate session token-- just to be safe on timing if someone's been playing for a while
-    // req.body.username, req.headers['user-agent'], req.ip, Date.now() + 3600000
-    // or maybe just pass in current token
-
-    // Put token in cookie
-    // res.cookie('session_token', result.token, {
-    //     httpOnly: true,
-    //     sameSite: 'strict',
-    //     overwrite: true,
-    //     maxAge: 3600000
-    // });
-
     return res.sendFile(path.join(__dirname, '/pages/game/game.html'));
 });
 

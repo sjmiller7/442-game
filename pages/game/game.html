@@ -75,6 +75,7 @@
             <h1>Othello</h1>
             <h2>Game</h2>
             <p id="welcome">Turn: <span id="turn"></span></p>
+            <button onclick="refreshGame()">test</button>
         </header>
         <main>
             <div id="board"></div>
@@ -93,6 +94,8 @@
             let user;
             let game;
             let opponent;
+            let board;
+            let pieces;
             // Get lobby setup info
             const xhttp = new XMLHttpRequest();
             xhttp.onload = function() {
@@ -111,6 +114,8 @@
                     user = response.user;
                     game = response.game;
                     opponent = response.opponent;
+                    board = response.board;
+                    pieces = response.pieces;
                     changeTurn();
 
                     // Chat connection
@@ -164,6 +169,35 @@
                 ws.send(JSON.stringify(msg))
                 // prevent refresh
                 return false;
+            }
+
+            // Refresh game data
+            function refreshGame() {
+                // Get lobby setup info
+                const xhttp = new XMLHttpRequest();
+                xhttp.onload = function() {
+                    // Error handling
+                    let response = JSON.parse(this.responseText);
+                    if (response.badSession) {
+                        window.location.href = "/login";
+                    }
+                    else if (response.error){
+                        sendFeedback(response.error);
+                    }
+                    // Handling response
+                    else {
+                        console.log(response);
+                        // Save data
+                        game = response.game;
+                        board = response.board;
+                        pieces = response.pieces;
+                        changeTurn();
+                    }
+                }
+                xhttp.open("GET", "/api/gameUpdate?id=" + game.gID, true);
+                xhttp.setRequestHeader("Content-type", "application/json");
+                xhttp.withCredentials = true;
+                xhttp.send();
             }
 
             // Adjust turn indicator
