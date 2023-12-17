@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Game | Othello</title>
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                padding: 0;
+                margin: 0;
+            }
+            h1, h2, h3, h4, p {
+                margin: 5px 0px 10px;
+            }
+            main {
+                width: 100%;
+                display: flex;
+            }
+            main > div {
+                flex-grow: 1;
+                border: 2px solid grey;
+                padding: 5px;
+            }
+            #board {
+                width: 65%;
+            }
+            #chat {
+                width: 35%;
+                overflow-y: auto;
+            }
+            #messages {
+                height: 50vh;
+                overflow-y: scroll;
+            }
+            #messages > p {
+                text-align: center;
+            }
+            .chatMsg {
+                background-color: lightgrey;
+                padding: 5px;
+                margin-bottom: 10px;
+            }
+            .chatMsg > p {
+                margin: 0px 5px;
+            }
+            .chatMsg > p:first-of-type {
+                font-weight: bold;
+            }
+            .chatMsg > p:last-of-type {
+                padding-left: 10px;
+            }
+            #chat input {
+                margin-bottom: 5px;
+                float: right;
+            }
+            #chat #messageIn {
+                width: 100%;
+            }
+            @media only screen and (max-width: 700px) {
+                main {
+                    flex-direction: column;
+                }
+                #chat, #board {
+                    width: 100%;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <div id="feedback" style="display: none;"></div>
+            <h1>Othello</h1>
+            <h2>Game</h2>
+            <p id="welcome">Turn: <span id="turn"></span></p>
+        </header>
+        <main>
+            <div id="board"></div>
+            <div id="chat">
+                <h3>Chat</h3>
+                <hr>
+                <div id="messages"></div>
+                <form method="POST" onsubmit="return sendChat()">
+                    <input type="text" name="messageIn" id="messageIn" maxlength="250" required>
+                    <input type="submit" value="Send">
+                </form>
+            </div>
+        </main>
+        <script>
+            let ws;
+            let user;
+            let game;
+            let opponent;
+            // Get lobby setup info
+            const xhttp = new XMLHttpRequest();
+            xhttp.onload = function() {
+                // Error handling
+                let response = JSON.parse(this.responseText);
+                if (response.badSession) {
+                    window.location.href = "/login";
+                }
+                else if (response.error){
+                    sendFeedback(response.error);
+                }
+                // Handling response
+                else {
+                    console.log(response);
+                    // Save data
+                    user = response.user;
+                    game = response.game;
+                    opponent = response.opponent;
+                    changeTurn();
+
+                    // Chat connection
+                    ws = new WebSocket('ws://localhost:8080/game')
+                    ws.onopen = () => {
+                        ws.send(JSON.stringify({type:'connection', user: response.user.username, game: game.gID}));
+                    }
+                    ws.onmessage = (message) => {
+                        // Get place to put message
+                        let messages = document.querySelector('#messages');
+                        // Convert message to json
+                        let messageJS = JSON.parse(message.data);
+                        if (messageJS.game == game.gID) {
+                            switch (messageJS.type) {
+                                case "connection":
+                                    // New user connected to lobby
+                                    let connMsg = document.createElement('p');
+                                    connMsg.innerText = `${messageJS.user} is online.`;
+                                    messages.appendChild(connMsg); 
+                                    break;
+                                case "msg":
+                                    // Chat message
+                                    let box = document.createElement('div');
+                                    box.classList.add('chatMsg');
+                                    let att = document.createElement('p');
+                                    let date = new Date(messageJS.date);
+                                    let dateTxt = `${date.getMonth()}-${date.getDay()}-${date.getFullYear()}`;
+                                    let timeTxt = `${date.getHours()}:${date.getMinutes()}`;
+                                    att.innerText = `${messageJS.user} on ${dateTxt} at ${timeTxt}`;
+                                    box.appendChild(att);
+                                    let msg = document.createElement('p');
+                                    msg.innerText = messageJS.msg;
+                                    box.appendChild(msg);
+                                    messages.appendChild(box); 
+                                    messages.scrollTop = messages.scrollHeight;
+                                    break;
+                            }
+                        }
+                    }
+                }
+            }
+            xhttp.open("GET", "/api/game", true);
+            xhttp.setRequestHeader("Content-type", "application/json");
+            xhttp.withCredentials = true;
+            xhttp.send();
+
+            // Sending chat messages
+            function sendChat() {
+                let msg = {type: "msg", user: user.username, id: user.uID, date: Date.now(), game: game.gID};
+                msg.msg = document.querySelector('#messageIn').value;
+                ws.send(JSON.stringify(msg))
+                // prevent refresh
+                return false;
+            }
+
+            // Adjust turn indicator
+            function changeTurn() {
+                var turnIndicator = document.querySelector('#turn');
+                if (opponent.color == game.turn) {
+                    turnIndicator.innerText = opponent.username;
+                }
+                else {
+                    turnIndicator.innerText = user.username;
+                }
+            }
+
+            // Display feedback / errors
+            function sendFeedback(err) {
+                let paragraph = document.createElement('p');
+                let feedback = document.querySelector('#feedback');
+                paragraph.innerText = err;
+                paragraph.style.color = 'red';
+                feedback.appendChild(paragraph);
+                feedback.style.display = 'block';
+                feedback.focus()
+            }
+
+            // Board setup script that gets called FIRST
+        </script>
+    </body>
+</html>

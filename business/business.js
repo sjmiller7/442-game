@@ -130,6 +130,8 @@ async function login(username, password, uAgent, ip, date) {
         return {error: `Invalid username or password. Please try again.`}
     }
 
+    // Check that the user isn't supposed to be in a game
+
     // Update user status
     let status = await db.updateUserStatus(user.uID, 'online');
     if (!status.updated) {
@@ -260,6 +262,12 @@ async function storeLobbyMsg(message) {
     return {inserted: inserted};
 }
 
+// Store messages from the game
+async function storeGameMsg(message) {
+    var inserted = await db.insertGameMsg(message.id, message.msg, message.date, message.game);
+    return {inserted: inserted};
+}
+
 // Getting list of users
 async function getUserList(token) {
     // Getting uID to exclude user
@@ -328,6 +336,114 @@ async function decline(id) {
     return [inviteExists.to, inviteExists.from];
 }
 
+// Accept an invitation
+async function accept(id) {
+    // Check that this exists
+    //      also get the ids so we know who's meant to be in the game
+    var inviteExists = await db.verifyInviteId(id);
+    if (!inviteExists) {
+        return {error: 'This invitation does not exist. Please invite the user to a game.'}
+    }
+
+    // Check that both users are online and not in a game
+    var playersAvailable = await db.verifyAvailability([inviteExists.to, inviteExists.from]);
+    // I'm checking both instead of just one because why not 
+    if (!playersAvailable) {
+        return {error: 'The other player is offline or in a game. Please wait to accept the invitation when they are online.'}
+    }
+
+    // Accept invitation
+    var acceptInvite = await db.acceptInvite(id);
+    if (!acceptInvite) {
+        return {error: 'There was an issue accepting your invitation. Please try again.'}
+    }
+
+    // Create game object
+    var game = await db.createGame(inviteExists.from, inviteExists.to);
+    if (!game) {
+        return {error: 'There was an error creating the game. Please try to invite again.'}
+    }
+
+    // Create pieces
+    var pieces = await db.createPieces(game);
+    if (!pieces) {
+        return {error: 'There was an error creating the game. Contact an admin for help.'}
+    }
+
+    // Create board
+    var board = await db.createBoard(game);
+    if (!board) {
+        return {error: 'There was an error creating the game. Contact an admin for help.'}
+    }
+    
+    // Change statuses to in game
+    var fromStatus = db.updateUserStatus(inviteExists.from, "in game");
+    var toStatus = db.updateUserStatus(inviteExists.to, "in game");
+
+    // Send back the users whose uis need to be refreshed
+    return {users: [inviteExists.to, inviteExists.from], gID: game};
+}
+
+// Get game info based on user id of a player
+async function gameInfoPlayer(uID) {
+    // Get general game info
+    var game = await db.getGamePlayer(uID);
+    if (!game) {
+        return {error: 'You are not in a game. Please return to the <a href="/othello/lobby">lobby</a>.'};
+    }
+
+    // Get board info
+    var board = await db.getBoard(game.gID);
+    if (!board) {
+        return {error: 'Error retrieving game data. Please contact an admin.'}
+    }
+
+    // Get piece info
+    var piecesArr = await db.getPieces(game.gID);
+    if (!piecesArr) {
+        return {error: 'Error retrieving game data. Please contact an admin.'}
+    }
+
+    // Reformat piece data into a more processable format for the ui
+    let pieces = {
+        board: [],
+        white: [],
+        black: [],
+    };
+    piecesArr.forEach(function(piece) {
+        switch(piece.status) {
+            case "board":
+                pieces.board.push(piece.id);
+                break;
+            case "white":
+                pieces.white.push(piece.id);
+                break;
+            case "black":
+                pieces.black.push(piece.id);
+                break;
+        }
+    });
+
+    // Get opponent info (sends the uID that isn't our user)
+    var oppID;
+    let color;
+    if (uID == game.black) {
+        oppID = game.white;
+        color = "white";
+    }
+    else {
+        oppID = game.black;
+        color = "black";
+    }
+    var opponent = await db.getOpponent(oppID);
+    if (!opponent) {
+        return {error: 'Error retrieving opponent data.'};
+    }
+    opponent.color = color;
+
+    return {game: {gID: game.gID, turn: game.turn, status: game.status}, board: board.board, pieces: pieces, opponent: opponent};
+}
+
 module.exports = {
     test,
     createRegToken,
@@ -340,8 +456,11 @@ module.exports = {
     getUserInfo,
     delExpSess,
     storeLobbyMsg,
+    storeGameMsg,
     getUserList,
     invite,
     getInvites,
-    decline
+    decline,
+    accept,
+    gameInfoPlayer,
 }

@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS `othellodb`.`user` (
   UNIQUE INDEX `username_UNIQUE` (`username` ASC) VISIBLE,
   UNIQUE INDEX `uID_UNIQUE` (`uID` ASC) VISIBLE)
 ENGINE = InnoDB
-AUTO_INCREMENT = 34
+AUTO_INCREMENT = 36
 DEFAULT CHARACTER SET = utf8mb3;
 
 
@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS `othellodb`.`game` (
     FOREIGN KEY (`white`)
     REFERENCES `othellodb`.`user` (`uID`))
 ENGINE = InnoDB
+AUTO_INCREMENT = 2
 DEFAULT CHARACTER SET = utf8mb3;
 
 
@@ -100,6 +101,7 @@ CREATE TABLE IF NOT EXISTS `othellodb`.`game_message` (
     FOREIGN KEY (`uID`)
     REFERENCES `othellodb`.`user` (`uID`))
 ENGINE = InnoDB
+AUTO_INCREMENT = 2
 DEFAULT CHARACTER SET = utf8mb3;
 
 
@@ -124,6 +126,7 @@ CREATE TABLE IF NOT EXISTS `othellodb`.`invitation` (
     FOREIGN KEY (`to`)
     REFERENCES `othellodb`.`user` (`uID`))
 ENGINE = InnoDB
+AUTO_INCREMENT = 20
 DEFAULT CHARACTER SET = utf8mb3;
 
 
@@ -144,7 +147,7 @@ CREATE TABLE IF NOT EXISTS `othellodb`.`lobby_message` (
     FOREIGN KEY (`uID`)
     REFERENCES `othellodb`.`user` (`uID`))
 ENGINE = InnoDB
-AUTO_INCREMENT = 2
+AUTO_INCREMENT = 14
 DEFAULT CHARACTER SET = utf8mb3;
 
 
@@ -176,7 +179,7 @@ CREATE TABLE IF NOT EXISTS `othellodb`.`register_session` (
   `session_token` VARCHAR(60) NOT NULL,
   PRIMARY KEY (`id`))
 ENGINE = InnoDB
-AUTO_INCREMENT = 56
+AUTO_INCREMENT = 58
 DEFAULT CHARACTER SET = utf8mb3;
 
 

@@ -264,8 +264,8 @@ router.put('/decline', idValidate(), async (req, res) => {
         if (!declined.error) {
             lobbyWSS.clients.forEach(function each(client) {
                 if (client.readyState === WebSocket.OPEN) {
-                // Invite can serve double purpose, since all it's doing is triggering a ui refresh for listed users
-                client.send(`{"type": "invite", "users": [${declined}]}`);
+                    // Invite can serve double purpose, since all it's doing is triggering a ui refresh for listed users
+                    client.send(`{"type": "invite", "users": [${declined}]}`);
                 }
             });
         }
@@ -273,9 +273,49 @@ router.put('/decline', idValidate(), async (req, res) => {
         // Send response
         return res.send(declined);
     }
-    res.send({error: 'Invalid user. Please try again.'});
+    res.send({error: 'Invalid invite. Please try again.'});
 })
 
+// Accept a game invite
+router.put('/accept', idValidate(), async (req, res) => {
+    // Checks that there were no validation errors
+    const result = validationResult(req);
+    if (result.isEmpty()) {
+        // Accept invite + set up game
+        let accepted = await biz.accept(req.body.id);
+
+        // Send notif to players to redirect to game
+        if (!accepted.error) {
+            lobbyWSS.clients.forEach(function each(client) {
+                if (client.readyState === WebSocket.OPEN) {
+                    // This will trigger a redirect to the game page 
+                    client.send(`{"type": "game", "users": [${accepted.users}], "gID": ${accepted.gID}}`);
+                }
+            });
+        }
+
+        // Send data/errors
+        return res.send(accepted);
+    }
+    res.send({error: 'Invalid invite. Please try again.'});
+})
+
+// Game info
+router.get('/game', async (req, res) => {
+    // Get session token
+    let token = req.cookies.session_token;
+
+    // Get user info
+    let userInfo = await biz.getUserInfo(token);
+
+    // Get the game that the user is in
+    let game = await biz.gameInfoPlayer(userInfo.uID);
+
+    // Building return object out of the data recieved
+    game.user = userInfo;
+
+    return res.send(game);
+});
 
 
 // Pages (inside of login)
@@ -301,11 +341,28 @@ app.use('/othello', async (req, res, next) => {
     else {
         res.redirect('/login');
     }
-})
+});
 
 // Lobby
 app.get('/othello/lobby', (req, res) => {
     return res.sendFile(path.join(__dirname, '/pages/lobby/lobby.html'));
+});
+
+// Game
+app.get('/othello/game', (req, res) => {
+    // Regenerate session token-- just to be safe on timing if someone's been playing for a while
+    // req.body.username, req.headers['user-agent'], req.ip, Date.now() + 3600000
+    // or maybe just pass in current token
+
+    // Put token in cookie
+    // res.cookie('session_token', result.token, {
+    //     httpOnly: true,
+    //     sameSite: 'strict',
+    //     overwrite: true,
+    //     maxAge: 3600000
+    // });
+
+    return res.sendFile(path.join(__dirname, '/pages/game/game.html'));
 });
 
 // Logout
@@ -331,6 +388,27 @@ lobbyWSS.on('connection', async function connection(ws) {
 
         // Send message along
         lobbyWSS.clients.forEach(function each(client) {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(`${message}`);
+            }
+          });
+    });
+});
+// Game chat connection
+gameWSS.on('connection', async function connection(ws) {
+    // Error handling
+    ws.on('error', console.error);
+
+    // Message handling
+    ws.on('message', async (message) => {
+        // Store message
+        let messageJS = JSON.parse(message);
+        if (messageJS.type === 'msg') {
+            let messageInsert = await biz.storeGameMsg(messageJS);
+        }
+
+        // Send message along
+        gameWSS.clients.forEach(function each(client) {
             if (client.readyState === WebSocket.OPEN) {
               client.send(`${message}`);
             }

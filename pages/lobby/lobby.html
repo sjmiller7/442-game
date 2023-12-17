@@ -176,7 +176,7 @@
                 // Error handling
                 let response = JSON.parse(this.responseText);
                 if (response.badSession) {
-                    window.location.href = "/othello/login";
+                    window.location.href = "/login";
                 }
                 else if (response.error){
                     sendFeedback(response.error);
@@ -238,6 +238,9 @@
                                     refreshUsers();
                                 }
                                 break;
+                            case "game":
+                                window.location.href = "/othello/game";
+                                break;
                         }
                     }
                 }
@@ -263,7 +266,7 @@
                     // Error handling
                     let response = JSON.parse(this.responseText);
                     if (response.badSession) {
-                        window.location.href = "/othello/login";
+                        window.location.href = "/login";
                     }
                     else if (response.error) {
                         sendFeedback(response.error);
@@ -309,7 +312,7 @@
                     // Error handling
                     let response = JSON.parse(this.responseText);
                     if (response.badSession) {
-                        window.location.href = "/othello/login";
+                        window.location.href = "/login";
                     }
                     else if (response.error) {
                         sendFeedback(response.error);
@@ -342,7 +345,7 @@
                     // Error handling
                     let response = JSON.parse(this.responseText);
                     if (response.badSession) {
-                        window.location.href = "/othello/login";
+                        window.location.href = "/login";
                     }
                     else if (response.error) {
                         sendFeedback(response.error);
@@ -410,16 +413,44 @@
                     // Error handling
                     let response = JSON.parse(this.responseText);
                     if (response.badSession) {
-                        window.location.href = "/othello/login";
+                        window.location.href = "/login";
                     }
                     else if (response.error) {
                         sendFeedback(response.error);
+                        // Refresh UI
+                        refreshInvitations();
+                        refreshUsers();
                     }
                     else {
                         // Do nothing-- websockets handles notifying to update invites
                     }
                 }
                 xhttp.open("PUT", "/api/decline", true);
+                xhttp.setRequestHeader("Content-type", "application/json");
+                xhttp.withCredentials = true;
+                xhttp.send(JSON.stringify({id: btn.dataset.invite}));
+            }
+
+            // Accept invitation
+            function acceptInvite(btn) {
+                const xhttp = new XMLHttpRequest();
+                xhttp.onload = function() {
+                    // Error handling
+                    let response = JSON.parse(this.responseText);
+                    if (response.badSession) {
+                        window.location.href = "/login";
+                    }
+                    else if (response.error) {
+                        sendFeedback(response.error);
+                        // Refresh UI
+                        refreshInvitations();
+                        refreshUsers();
+                    }
+                    else {
+                        // Do nothing-- it will auto redirect us if successful
+                    }
+                }
+                xhttp.open("PUT", "/api/accept", true);
                 xhttp.setRequestHeader("Content-type", "application/json");
                 xhttp.withCredentials = true;
                 xhttp.send(JSON.stringify({id: btn.dataset.invite}));
