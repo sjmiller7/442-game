@@ -410,8 +410,8 @@ async function createBoard(gID) {
       {cols: [{}, {}, {}, {}, {}, {}, {}, {}]},
       {cols: [{}, {}, {}, {}, {}, {}, {}, {}]},
       {cols: [{}, {}, {}, {}, {}, {}, {}, {}]},
-      {cols: [{}, {}, {}, {id: data[0], color: "black"}, {id: data[0], color: "white"}, {}, {}, {}]},
-      {cols: [{}, {}, {}, {id: data[0], color: "white"}, {id: data[0], color: "black"}, {}, {}, {}]},
+      {cols: [{}, {}, {}, {id: data[0].id, color: "black"}, {id: data[1].id, color: "white"}, {}, {}, {}]},
+      {cols: [{}, {}, {}, {id: data[2].id, color: "white"}, {id: data[3].id, color: "black"}, {}, {}, {}]},
       {cols: [{}, {}, {}, {}, {}, {}, {}, {}]},
       {cols: [{}, {}, {}, {}, {}, {}, {}, {}]},
       {cols: [{}, {}, {}, {}, {}, {}, {}, {}]},
@@ -473,14 +473,14 @@ async function getBoard(gID) {
   if (data.length != 1) {
     return false;
   }
-  return data[0];
+  return data[0].board;
 }
 
 // Get piece info
 async function getPieces(gID) {
   // Query 
   const rows = await db.query(
-    'SELECT id, status FROM piece WHERE gID = ?;',
+    'SELECT id, status FROM piece WHERE gID = ? ORDER BY id;',
     [gID]
   );
   const data = helper.emptyOrRows(rows);
@@ -506,6 +506,69 @@ async function getOpponent(uID) {
   return data[0];
 }
 
+// Get piece info
+async function movePiece(gID, board, row, col, flips, color) {
+  // Query for a random piece
+  const pieces = await db.query(
+    'SELECT id FROM piece WHERE gID = ? AND status = ? ORDER BY id LIMIT 1;',
+    [gID, color]
+  );
+  const piece = helper.emptyOrRows(pieces);
+  // Something has gone horrifically wrong
+  if (piece.length != 1) {
+    return false;
+  }
+
+  // Update the board
+  board.rows[row].cols[col] = {id: pieces[0].id, color: color};
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if (flips.includes(board.rows[r].cols[c].id)) {
+        board.rows[r].cols[c].color = color;
+      }
+    }
+  }
+  // Query for update
+  const result = await db.query(
+    'UPDATE board SET board=? WHERE gID=?',
+    [board, gID]
+  );
+  // Somethings bad
+  if (result.affectedRows != 1) {
+    return false;
+  }
+
+  // Update piece allocation
+  // Query for update
+  const result2 = await db.query(
+    'UPDATE piece SET status="board" WHERE id=?',
+    [pieces[0].id]
+  );
+  // Somethings bad
+  if (result2.affectedRows != 1) {
+    return false;
+  }
+
+  return pieces[0].id;
+}
+
+// Change turn
+async function changeTurn(gID, oldTurn) {
+  // Get right turn
+  let turn = oldTurn == 'black' ? 'white' : 'black';
+
+  // Query for update
+  const result = await db.query(
+    'UPDATE game SET turn=? WHERE gID=?',
+    [turn, gID]
+  );
+  // Somethings bad
+  if (result.affectedRows != 1) {
+    return false;
+  }
+
+  return true;
+}
 
 module.exports = {
   newRegSess,
@@ -537,4 +600,6 @@ module.exports = {
   getBoard,
   getPieces,
   getOpponent,
+  movePiece,
+  changeTurn
 }

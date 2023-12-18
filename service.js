@@ -22,6 +22,8 @@ var biz = require('./business/business'); // Business layer
 var usernameValidate = () => check('username').escape().notEmpty().isLength({ max: 45 }).trim();
 var passValidate = () => check('password').escape().notEmpty().isLength({ max: 45 }).trim();
 var idValidate = () => check('id').escape().notEmpty().isNumeric().trim();
+var rowValidate = () => check('row').escape().notEmpty().isInt({min: 0, max: 7}).trim();
+var colValidate = () => check('col').escape().notEmpty().isInt({min: 0, max: 7}).trim();
 
 // API requests (outide of login)
 // Tester to make sure server is connected
@@ -327,6 +329,41 @@ router.get('/gameUpdate', idValidate(), async (req, res) => {
         return res.send(game);
     }
     res.send({error: 'Invalid game. Please try again.'});
+});
+
+// Getting moves list
+router.get('/moves', idValidate(), async (req, res) => {
+    // Checks that there were no validation errors
+    const result = validationResult(req);
+    if (result.isEmpty()) {
+        // Get the moves
+        let moves = await biz.getMoves(req.query.id);
+
+        return res.send(moves);
+    }
+    res.send({error: 'Invalid game. Please try again.'});
+});
+
+// Making a move
+router.put('/move', idValidate(), rowValidate(), colValidate(), async (req, res) => {
+    // Checks that there were no validation errors
+    const result = validationResult(req);
+    if (result.isEmpty()) {
+        // Get session token
+        let token = req.cookies.session_token;
+
+        // Make the move
+        let moveResult = await biz.makeMove(token, req.body.id, parseInt(req.body.row), parseInt(req.body.col));
+
+        gameWSS.clients.forEach(function each(client) {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(`{"type": "flips", "flips": [${moveResult.flips}], "moved": ${moveResult.moved}, "to": [${req.body.row}, ${req.body.col}], "game": ${req.body.id}}`);
+            }
+        });
+
+        return res.send(moveResult);
+    }
+    res.send({error: 'Invalid game data. Please try again.'});
 });
 
 

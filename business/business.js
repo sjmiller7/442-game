@@ -401,7 +401,7 @@ async function gameInfoPlayer(uID) {
     // Get general game info
     var game = await db.getGamePlayer(uID);
     if (!game) {
-        return {error: 'You are not in a game. Please return to the <a href="/othello/lobby">lobby</a>.'};
+        return {error: 'You are not in a game. Please return to the lobby.'};
     }
 
     // Get board info
@@ -453,7 +453,7 @@ async function gameInfoPlayer(uID) {
     }
     opponent.color = color;
 
-    return {game: {gID: game.gID, turn: game.turn, status: game.status}, board: board.board, pieces: pieces, opponent: opponent};
+    return {game: {gID: game.gID, turn: game.turn, status: game.status}, board: board, pieces: pieces, opponent: opponent};
 }
 
 // Get game info based on game id
@@ -461,42 +461,10 @@ async function gameInfo(gID) {
     // Get general game info
     var game = await db.getGame(gID);
     if (!game) {
-        return {error: 'This game does not exist or has completed. Please return to the <a href="/othello/lobby">lobby</a>.'};
+        return {error: 'This game does not exist or has completed. Please return to the lobby.'};
     }
 
-    // Get board info
-    var board = await db.getBoard(gID);
-    if (!board) {
-        return {error: 'Error retrieving game data. Please contact an admin.'}
-    }
-
-    // Get piece info
-    var piecesArr = await db.getPieces(gID);
-    if (!piecesArr) {
-        return {error: 'Error retrieving game data. Please contact an admin.'}
-    }
-
-    // Reformat piece data into a more processable format for the ui
-    let pieces = {
-        board: [],
-        white: [],
-        black: [],
-    };
-    piecesArr.forEach(function(piece) {
-        switch(piece.status) {
-            case "board":
-                pieces.board.push(piece.id);
-                break;
-            case "white":
-                pieces.white.push(piece.id);
-                break;
-            case "black":
-                pieces.black.push(piece.id);
-                break;
-        }
-    });
-
-    return {game: {gID: game.gID, turn: game.turn, status: game.status}, board: board.board, pieces: pieces};
+    return {game: {gID: game.gID, turn: game.turn, status: game.status}};
 }
 
 // Check if the user is supposed to be in a game
@@ -510,6 +478,544 @@ async function inGame(uID) {
 
     return false;
 }
+
+// Get moves to play
+async function getMoves(gID) {
+    // Get general game info
+    var game = await db.getGame(gID);
+    if (!game) {
+        return {error: 'This game does not exist or has completed. Please return to the lobby.'};
+    }
+
+    // Get board info
+    var board = await db.getBoard(game.gID);
+    if (!board) {
+        return {error: 'Error retrieving game data. Please contact an admin.'}
+    }
+
+    // Go square by square to check for available moves
+    let moves = [];
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+            if (canOutflank(board, r, c, board.rows[r].cols[c], game.turn)) {
+                moves.push(`#square${r}${c}`); // puts the exact id of the square so we can queryselect it 
+            }
+        }
+    }
+
+    return {moves: moves};
+}
+
+// INTERNAL FUNCTION - checks to see if placing a piece of a given color in a given square can outflank any of the opponents pieces
+// (stops with first outflank found)
+// im sorry this is so horrendous im sure i could have figured out something more efficeint with more time and energy but i have 12 hours until its due so no
+function canOutflank(board, startRow, startCol, square, color) {
+    // Check that the square is empty in the first place
+    if (square.id) {
+        return false;
+    }
+
+    // Check up
+    if (startRow > 1) { // Need at least two so we can outflank
+        let outflanked = 0;
+        let endReached = false;
+        for (let r = startRow - 1; r >= 0; r--) {
+            // There's not a piece here
+            if (!board.rows[r].cols[startCol].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[r].cols[startCol].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked++;
+            }
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked > 0) {
+            return true;
+        }
+    }
+    
+    // Check down
+    if (startRow < 6) { // Need at least two so we can outflank
+        let outflanked = 0;
+        let endReached = false;
+        for (let r = startRow + 1; r <= 7; r++) {
+            // There's not a piece here
+            if (!board.rows[r].cols[startCol].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[r].cols[startCol].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked++;
+            }
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked > 0) {
+            return true;
+        }
+    }
+
+    // Check left
+    if (startCol > 1) { // Need at least two so we can outflank
+        let outflanked = 0;
+        let endReached = false;
+        for (let c = startCol - 1; c >= 0; c--) {
+            // There's not a piece here
+            if (!board.rows[startRow].cols[c].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[startRow].cols[c].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked++;
+            }
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked > 0) {
+            return true;
+        }
+    }
+
+    // Check right
+    if (startCol < 6) { // Need at least two so we can outflank
+        let outflanked = 0;
+        let endReached = false;
+        for (let c = startCol + 1; c <= 7; c++) {
+            // There's not a piece here
+            if (!board.rows[startRow].cols[c].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[startRow].cols[c].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked++;
+            }
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked > 0) {
+            return true;
+        }
+    }
+
+    // Check up-left
+    if (startRow > 1 && startCol > 1) { // Need at least two so we can outflank
+        let outflanked = 0;
+        let endReached = false;
+        let r = startRow - 1;
+        let c = startCol - 1;
+        while (r >= 0 && c >= 0) {
+            // There's not a piece here
+            if (!board.rows[r].cols[c].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[r].cols[c].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked++;
+            }
+            r--;
+            c--;
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked > 0) {
+            return true;
+        }
+    }
+
+    // Check up-right
+    if (startRow > 1 && startCol < 6) { // Need at least two so we can outflank
+        let outflanked = 0;
+        let endReached = false;
+        let r = startRow - 1;
+        let c = startCol + 1;
+        while (r >= 0 && c <= 7) {
+            // There's not a piece here
+            if (!board.rows[r].cols[c].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[r].cols[c].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked++;
+            }
+            r--;
+            c++;
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked > 0) {
+            return true;
+        }
+    }
+
+    // Check down-right
+    if (startRow < 6 && startCol < 6) { // Need at least two so we can outflank
+        let outflanked = 0;
+        let endReached = false;
+        let r = startRow + 1;
+        let c = startCol + 1;
+        while (r <= 7 && c <= 7) {
+            // There's not a piece here
+            if (!board.rows[r].cols[c].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[r].cols[c].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked++;
+            }
+            r++;
+            c++;
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked > 0) {
+            return true;
+        }
+    }
+
+    // Check down-left
+    if (startRow < 6 && startCol > 1) { // Need at least two so we can outflank
+        let outflanked = 0;
+        let endReached = false;
+        let r = startRow + 1;
+        let c = startCol - 1;
+        while (r <= 7 && c >= 0) {
+            // There's not a piece here
+            if (!board.rows[r].cols[c].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[r].cols[c].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked++;
+            }
+            r++;
+            c--;
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked > 0) {
+            return true;
+        }
+    }
+
+    // No ways to outflank
+    return false;
+}
+
+
+
+// Make move
+async function makeMove(token, gID, row, col) {
+    // Get uID of user
+    var decoded = await jwt.verify(token, process.env.TOKEN_KEY);
+
+    // Get general game info
+    var game = await db.getGame(gID);
+    if (!game) {
+        return {error: 'This game does not exist or has completed. Please return to the lobby.'};
+    }
+
+    // Check that it's the user's turn
+    if ((game.turn == 'black' && game.black != decoded.uID) || (game.turn == 'white' && game.white != decoded.uID)) {
+        return {error: 'It is not your turn please wait.'}
+    }
+
+    // Get board info
+    var board = await db.getBoard(game.gID);
+    if (!board) {
+        return {error: 'Error retrieving game data. Please contact an admin.'}
+    }
+
+    // Check that the move is possible and get bits to flip
+    let flips = toFlip(board, row, col, board.rows[row].cols[col], game.turn)
+    if (flips.length == 0) {
+        return {error: 'This move does not outflank any squares.'};
+    }
+
+    // Move piece in DB
+    var moved = await db.movePiece(gID, board, row, col, flips, game.turn);
+    if (!moved) {
+        return {error: 'Issue moving piece'};
+    }
+
+    // Change turn
+    var changed = await db.changeTurn(gID, game.turn);
+    if (!changed) {
+        return {error: 'Issue changing turn'};
+    }
+
+    return {flips: flips, moved: moved};
+}
+
+// INTERNAL FUNCTION - checks to see what pieces need to be flipped 
+// (doubles as a move validator)
+// im sorry this is so horrendous im sure i could have figured out something more efficeint with more time and energy but i have 12 hours until its due so no
+function toFlip(board, startRow, startCol, square, color) {
+    let flips = [];
+
+    // Check that the square is empty in the first place
+    if (square.id) {
+        return flips;
+    }
+
+    // Check up
+    if (startRow > 1) { // Need at least two so we can outflank
+        let outflanked = [];
+        let endReached = false;
+        for (let r = startRow - 1; r >= 0; r--) {
+            // There's not a piece here
+            if (!board.rows[r].cols[startCol].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[r].cols[startCol].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked.push(board.rows[r].cols[startCol].id);
+            }
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked.length > 0) {
+            flips = flips.concat(outflanked);
+        }
+    }
+    
+    // Check down
+    if (startRow < 6) { // Need at least two so we can outflank
+        let outflanked = [];
+        let endReached = false;
+        for (let r = startRow + 1; r <= 7; r++) {
+            // There's not a piece here
+            if (!board.rows[r].cols[startCol].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[r].cols[startCol].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked.push(board.rows[r].cols[startCol].id);
+            }
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked.length > 0) {
+            flips = flips.concat(outflanked);
+        }
+    }
+
+    // Check left
+    if (startCol > 1) { // Need at least two so we can outflank
+        let outflanked = [];
+        let endReached = false;
+        for (let c = startCol - 1; c >= 0; c--) {
+            // There's not a piece here
+            if (!board.rows[startRow].cols[c].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[startRow].cols[c].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked.push(board.rows[startRow].cols[c].id);
+            }
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked.length > 0) {
+            flips = flips.concat(outflanked);
+        }
+    }
+
+    // Check right
+    if (startCol < 6) { // Need at least two so we can outflank
+        let outflanked = [];
+        let endReached = false;
+        for (let c = startCol + 1; c <= 7; c++) {
+            // There's not a piece here
+            if (!board.rows[startRow].cols[c].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[startRow].cols[c].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked.push(board.rows[startRow].cols[c].id);
+            }
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked.length > 0) {
+            flips = flips.concat(outflanked)
+        }
+    }
+
+    // Check up-left
+    if (startRow > 1 && startCol > 1) { // Need at least two so we can outflank
+        let outflanked = [];
+        let endReached = false;
+        let r = startRow - 1;
+        let c = startCol - 1;
+        while (r >= 0 && c >= 0) {
+            // There's not a piece here
+            if (!board.rows[r].cols[c].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[r].cols[c].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked.push(board.rows[r].cols[c].id);
+            }
+            r--;
+            c--;
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked.length > 0) {
+            flips = flips.concat(outflanked);
+        }
+    }
+
+    // Check up-right
+    if (startRow > 1 && startCol < 6) { // Need at least two so we can outflank
+        console.log('this');
+        let outflanked = [];
+        let endReached = false;
+        let r = startRow - 1;
+        let c = startCol + 1;
+        console.log('r:' + r + 'c:' + c)
+        while (r >= 0 && c <= 7) {
+            // There's not a piece here
+            if (!board.rows[r].cols[c].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[r].cols[c].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked.push(board.rows[r].cols[c].id);
+            }
+            r--;
+            c++;
+        }
+        // Determine if we've outflanked anything
+        console.log(endReached);
+        console.log(outflanked);
+        console.log(color);
+        if (endReached && outflanked.length > 0) {
+            flips = flips.concat(outflanked);
+        }
+    }
+
+    // Check down-right
+    if (startRow < 6 && startCol < 6) { // Need at least two so we can outflank
+        let outflanked = [];
+        let endReached = false;
+        let r = startRow + 1;
+        let c = startCol + 1;
+        while (r <= 7 && c <= 7) {
+            // There's not a piece here
+            if (!board.rows[r].cols[c].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[r].cols[c].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked.push(board.rows[r].cols[c].id);
+            }
+            r++;
+            c++;
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked.length > 0) {
+            flips = flips.concat(outflanked);
+        }
+    }
+
+    // Check down-left
+    if (startRow < 6 && startCol > 1) { // Need at least two so we can outflank
+        let outflanked = [];
+        let endReached = false;
+        let r = startRow + 1;
+        let c = startCol - 1;
+        while (r <= 7 && c >= 0) {
+            // There's not a piece here
+            if (!board.rows[r].cols[c].id) {
+                break;
+            }
+            // There's a piece here and it's the user's color
+            else if (board.rows[r].cols[c].color == color) {
+                endReached = true; // shows that we can outflank bc there's something on the other side
+                break;
+            }
+            // There's a piece you can flip here 
+            else {
+                outflanked.push(board.rows[r].cols[c].id);
+            }
+            r++;
+            c--;
+        }
+        // Determine if we've outflanked anything
+        if (endReached && outflanked.length > 0) {
+            flips = flips.concat(outflanked);
+        }
+    }
+
+    // Send back pieces to flip
+    return flips;
+}
+
 
 module.exports = {
     test,
@@ -532,4 +1038,6 @@ module.exports = {
     gameInfoPlayer,
     gameInfo,
     inGame,
+    getMoves,
+    makeMove
 }
