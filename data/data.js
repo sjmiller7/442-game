@@ -198,6 +198,21 @@ async function insertLobbyMsg(id, message, date) {
   return false;
 }
 
+// Store game messages
+async function insertGameMsg(id, message, date, game) {
+  // Query for insertion
+  const result = await db.query(
+    'INSERT INTO game_message (uID, gID, message, date) VALUES (?, ?, ?, FROM_UNIXTIME(? / 1000))',
+    [id, game, message, date]
+  );
+  // Return success if inserted
+  if (result.affectedRows > 0) {
+    return true;
+  }
+  // Errors
+  return false;
+}
+
 // Get online users
 async function getUserList(uID) {
   // Query for other users
@@ -270,6 +285,21 @@ async function declineInvite(id) {
   return { updated: false };
 }
 
+// Accept an invitation
+async function acceptInvite(id) {
+  // Query for update
+  const result = await db.query(
+    'UPDATE invitation SET status="accepted" WHERE id=?',
+    [id]
+  );
+  // Return success if updated
+  if (result.affectedRows > 0) {
+    return { updated: true };
+  }
+  // Errors
+  return { updated: false };
+}
+
 // Get invites to a user
 async function getInvitesTo(uID) {
   // Query for invites
@@ -294,6 +324,251 @@ async function getInvitesFrom(uID) {
   return data;
 }
 
+// Verify that users are availble for a game
+async function verifyAvailability(users) {
+  // Query 
+  const rows = await db.query(
+    'SELECT status FROM user WHERE uID IN (?, ?)',
+    users
+  );
+  const data = helper.emptyOrRows(rows);
+  // Something has gone horrifically wrong / a user doesn't exist
+  if (data.length != 2) {
+    return false;
+  }
+  // Check statuses
+  if (data[0].status !== 'online' || data[1].status !== 'online') {
+    return false;
+  }
+  return true;
+}
+
+// Create a game
+async function createGame(from, to) {
+  // Query for insertion
+  const result = await db.query(
+    'INSERT INTO game (black, white, turn, status) VALUES (?, ?, "black", "ongoing")',
+    [from, to]
+  );
+  // Return success if inserted
+  if (result.affectedRows > 0) {
+    return result.insertId;
+  }
+  // Errors
+  return false;
+}
+
+// Create pieces for a game
+async function createPieces(gID) {
+  // We're gonna call this half-assed safety. 
+
+  // Piece statuses (30 assigned to white, 30 assigned to black, 4 placed on board) template
+  // ?s for the gID
+  let insertData = '';
+  for (let a = 0; a < 4; a++) {
+    insertData += '("board", ?), ';
+  }
+  for (let b = 0; b < 30; b++) {
+    insertData += '("white", ?), ("black", ?), '
+  }
+  insertData = insertData.substring(0, insertData.length - 2); // cut off trailing comma & space
+  insertData += ';';
+
+  // gID in array 64 times to fill the ?s
+  let ids = Array(64).fill(gID);
+
+  // Query for insertion
+  const result = await db.query(
+    'INSERT INTO piece (status, gID) VALUES ' + insertData,
+    ids
+  );
+  // Return success if inserted
+  if (result.affectedRows == 64) {
+    return true;
+  }
+  // Errors
+  return false;
+}
+
+// Create board for a game
+async function createBoard(gID) {
+  // Get the pieces that go on the board
+  const rows = await db.query(
+    'SELECT id FROM piece WHERE gID = ? AND status = "board";',
+    [gID]
+  );
+  const data = helper.emptyOrRows(rows);
+  // ERR checking
+  if (data.length != 4) {
+    return false;
+  }
+
+  // Make JSON gameboard
+  let board = {
+    rows: 
+    [
+      {cols: [{}, {}, {}, {}, {}, {}, {}, {}]},
+      {cols: [{}, {}, {}, {}, {}, {}, {}, {}]},
+      {cols: [{}, {}, {}, {}, {}, {}, {}, {}]},
+      {cols: [{}, {}, {}, {id: data[0].id, color: "black"}, {id: data[1].id, color: "white"}, {}, {}, {}]},
+      {cols: [{}, {}, {}, {id: data[2].id, color: "white"}, {id: data[3].id, color: "black"}, {}, {}, {}]},
+      {cols: [{}, {}, {}, {}, {}, {}, {}, {}]},
+      {cols: [{}, {}, {}, {}, {}, {}, {}, {}]},
+      {cols: [{}, {}, {}, {}, {}, {}, {}, {}]},
+    ]
+  }
+
+  // Query for insertion
+  const result = await db.query(
+    'INSERT INTO board (gID, board) VALUES (?, ?);',
+    [gID, board]
+  );
+  // Return success if inserted
+  if (result.affectedRows == 1) {
+    return true;
+  }
+  // Errors
+  return false;
+}
+
+// Get game info based on a player's id
+async function getGamePlayer(uID) {
+  // Query 
+  const rows = await db.query(
+    'SELECT * FROM game WHERE (black = ? OR white = ?) AND status = "ongoing";',
+    [uID, uID]
+  );
+  const data = helper.emptyOrRows(rows);
+  // Something has gone horrifically wrong / a game doesnt exist
+  if (data.length != 1) {
+    return false;
+  }
+  return data[0];
+}
+
+// Get game info based on a game id
+async function getGame(gID) {
+  // Query 
+  const rows = await db.query(
+    'SELECT * FROM game WHERE gID = ? AND status = "ongoing";',
+    [gID]
+  );
+  const data = helper.emptyOrRows(rows);
+  // Something has gone horrifically wrong / a game doesnt exist
+  if (data.length != 1) {
+    return false;
+  }
+  return data[0];
+}
+
+// Get board info
+async function getBoard(gID) {
+  // Query 
+  const rows = await db.query(
+    'SELECT board FROM board WHERE gID = ?;',
+    [gID]
+  );
+  const data = helper.emptyOrRows(rows);
+  // Something has gone horrifically wrong
+  if (data.length != 1) {
+    return false;
+  }
+  return data[0].board;
+}
+
+// Get piece info
+async function getPieces(gID) {
+  // Query 
+  const rows = await db.query(
+    'SELECT id, status FROM piece WHERE gID = ? ORDER BY id;',
+    [gID]
+  );
+  const data = helper.emptyOrRows(rows);
+  // Something has gone horrifically wrong
+  if (data.length != 64) {
+    return false;
+  }
+  return data;
+}
+
+// Get opponent info based on a player's id
+async function getOpponent(uID) {
+  // Query 
+  const rows = await db.query(
+    'SELECT uID, username FROM user WHERE uID = ?;',
+    [uID]
+  );
+  const data = helper.emptyOrRows(rows);
+  // Something has gone horrifically wrong / a game doesnt exist
+  if (data.length != 1) {
+    return false;
+  }
+  return data[0];
+}
+
+// Get piece info
+async function movePiece(gID, board, row, col, flips, color) {
+  // Query for a random piece
+  const pieces = await db.query(
+    'SELECT id FROM piece WHERE gID = ? AND status = ? ORDER BY id LIMIT 1;',
+    [gID, color]
+  );
+  const piece = helper.emptyOrRows(pieces);
+  // Something has gone horrifically wrong
+  if (piece.length != 1) {
+    return false;
+  }
+
+  // Update the board
+  board.rows[row].cols[col] = {id: pieces[0].id, color: color};
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if (flips.includes(board.rows[r].cols[c].id)) {
+        board.rows[r].cols[c].color = color;
+      }
+    }
+  }
+  // Query for update
+  const result = await db.query(
+    'UPDATE board SET board=? WHERE gID=?',
+    [board, gID]
+  );
+  // Somethings bad
+  if (result.affectedRows != 1) {
+    return false;
+  }
+
+  // Update piece allocation
+  // Query for update
+  const result2 = await db.query(
+    'UPDATE piece SET status="board" WHERE id=?',
+    [pieces[0].id]
+  );
+  // Somethings bad
+  if (result2.affectedRows != 1) {
+    return false;
+  }
+
+  return pieces[0].id;
+}
+
+// Change turn
+async function changeTurn(gID, oldTurn) {
+  // Get right turn
+  let turn = oldTurn == 'black' ? 'white' : 'black';
+
+  // Query for update
+  const result = await db.query(
+    'UPDATE game SET turn=? WHERE gID=?',
+    [turn, gID]
+  );
+  // Somethings bad
+  if (result.affectedRows != 1) {
+    return false;
+  }
+
+  return true;
+}
 
 module.exports = {
   newRegSess,
@@ -307,11 +582,24 @@ module.exports = {
   delSess,
   delExpSess,
   insertLobbyMsg,
+  insertGameMsg,
   getUserList,
   verifyInvite,
   verifyInviteId,
   createInvite,
   declineInvite,
+  acceptInvite,
   getInvitesTo,
-  getInvitesFrom
+  getInvitesFrom,
+  verifyAvailability,
+  createGame,
+  createPieces,
+  createBoard,
+  getGamePlayer,
+  getGame,
+  getBoard,
+  getPieces,
+  getOpponent,
+  movePiece,
+  changeTurn
 }

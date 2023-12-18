@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Game | Othello</title>
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                padding: 0;
+                margin: 0;
+            }
+            h1, h2, h3, h4, p {
+                margin: 5px 0px 10px;
+            }
+            main {
+                width: 100%;
+                display: flex;
+            }
+            main > div {
+                flex-grow: 1;
+                border: 2px solid grey;
+                padding: 5px;
+            }
+            #boardBox {
+                width: 65%;
+                overflow: auto;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            #board {
+                background-color: #074A36;
+                border: 2px solid #074A36;
+                box-sizing: content-box;
+            }
+            #chat {
+                width: 35%;
+                overflow-y: auto;
+            }
+            #messages {
+                height: 400px;
+                overflow-y: scroll;
+            }
+            #messages > p {
+                text-align: center;
+            }
+            .chatMsg {
+                background-color: lightgrey;
+                padding: 5px;
+                margin-bottom: 10px;
+            }
+            .chatMsg > p {
+                margin: 0px 5px;
+            }
+            .chatMsg > p:first-of-type {
+                font-weight: bold;
+            }
+            .chatMsg > p:last-of-type {
+                padding-left: 10px;
+            }
+            #chat input {
+                margin-bottom: 5px;
+                float: right;
+            }
+            #chat #messageIn {
+                width: 100%;
+            }
+            .piece { 
+                transform-origin: 50% 50%;
+                transform-box: fill-box;
+            }
+            @media only screen and (max-width: 700px) {
+                main {
+                    flex-direction: column;
+                }
+                #chat, #boardBox {
+                    width: 100%;
+                }
+                #messages {
+                    height: 50vh;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <div id="feedback" style="display: none;"></div>
+            <h1>Othello</h1>
+            <h2>Game</h2>
+            <p id="welcome">Turn: <span id="turn"></span></p>
+            <button onclick="refreshGame()">test</button>
+        </header>
+        <main>
+            <div id="boardBox">
+                <svg xmlns="http://www.w3.org/2000/svg"
+                    xmlns:xlink="http://www.w3.org/1999/xlink"
+                    width="400px" height="500px" id="board">
+                </svg>
+            </div>
+            <div id="chat">
+                <h3>Chat</h3>
+                <hr>
+                <div id="messages"></div>
+                <form method="POST" onsubmit="return sendChat()">
+                    <input type="text" name="messageIn" id="messageIn" maxlength="250" required>
+                    <input type="submit" value="Send">
+                </form>
+            </div>
+        </main>
+        <script>
+            // Constants and common variables
+            const svgns = `http://www.w3.org/2000/svg`;
+            let ws;
+            let user;
+            let game;
+            let opponent;
+
+            // Get lobby setup info
+            const xhttp = new XMLHttpRequest();
+            xhttp.onload = function() {
+                // Error handling
+                let response = JSON.parse(this.responseText);
+                if (response.badSession) {
+                    window.location.href = "/login";
+                }
+                else if (response.error){
+                    sendFeedback(response.error);
+                }
+                // Handling response
+                else {
+                    // Save data
+                    user = response.user;
+                    game = response.game;
+                    opponent = response.opponent;
+                    boardSetup(response.board, response.pieces);
+
+                    // Chat connection
+                    ws = new WebSocket('ws://localhost:8080/game')
+                    ws.onopen = () => {
+                        ws.send(JSON.stringify({type:'connection', user: response.user.username, game: game.gID}));
+                    }
+                    ws.onmessage = (message) => {
+                        // Get place to put message
+                        let messages = document.querySelector('#messages');
+                        // Convert message to json
+                        let messageJS = JSON.parse(message.data);
+                        if (messageJS.game == game.gID) {
+                            switch (messageJS.type) {
+                                case "connection":
+                                    // New user connected to lobby
+                                    let connMsg = document.createElement('p');
+                                    connMsg.innerText = `${messageJS.user} is online.`;
+                                    messages.appendChild(connMsg); 
+                                    break;
+                                case "msg":
+                                    // Chat message
+                                    let box = document.createElement('div');
+                                    box.classList.add('chatMsg');
+                                    let att = document.createElement('p');
+                                    let date = new Date(messageJS.date);
+                                    let dateTxt = `${date.getMonth()}-${date.getDay()}-${date.getFullYear()}`;
+                                    let timeTxt = `${date.getHours()}:${date.getMinutes()}`;
+                                    att.innerText = `${messageJS.user} on ${dateTxt} at ${timeTxt}`;
+                                    box.appendChild(att);
+                                    let msg = document.createElement('p');
+                                    msg.innerText = messageJS.msg;
+                                    box.appendChild(msg);
+                                    messages.appendChild(box); 
+                                    messages.scrollTop = messages.scrollHeight;
+                                    break;
+                                case "flips":
+                                    handleMove(messageJS.flips, messageJS.moved, messageJS.to);
+                                    break;
+                            }
+                        }
+                    }
+                }
+            }
+            xhttp.open("GET", "/api/game", true);
+            xhttp.setRequestHeader("Content-type", "application/json");
+            xhttp.withCredentials = true;
+            xhttp.send();
+
+            // Sending chat messages
+            function sendChat() {
+                let msg = {type: "msg", user: user.username, id: user.uID, date: Date.now(), game: game.gID};
+                msg.msg = document.querySelector('#messageIn').value;
+                ws.send(JSON.stringify(msg))
+                // prevent refresh
+                return false;
+            }
+
+            // Refresh game data
+            function refreshGame() {
+                // Get lobby setup info
+                const xhttp = new XMLHttpRequest();
+                xhttp.onload = function() {
+                    // Error handling
+                    let response = JSON.parse(this.responseText);
+                    if (response.badSession) {
+                        window.location.href = "/login";
+                    }
+                    else if (response.error){
+                        sendFeedback(response.error);
+                    }
+                    // Handling response
+                    else {
+                        // Save data
+                        game = response.game;
+                        changeTurn();
+                    }
+                }
+                xhttp.open("GET", "/api/gameUpdate?id=" + game.gID, true);
+                xhttp.setRequestHeader("Content-type", "application/json");
+                xhttp.withCredentials = true;
+                xhttp.send();
+            }
+
+            // Adjust turn indicator
+            function changeTurn() {
+                var turnIndicator = document.querySelector('#turn');
+                if (opponent.color == game.turn) {
+                    // Opponent's turn, set indicator and wait
+                    turnIndicator.innerText = opponent.username;
+                }
+                else {
+                    // My turn, set indicator and request moves
+                    turnIndicator.innerText = user.username;
+                    getMoves();
+                }
+            }
+
+            // Get and display moves
+            function getMoves() {
+                // Get list of moves
+                const xhttp = new XMLHttpRequest();
+                xhttp.onload = function() {
+                    // Error handling
+                    let response = JSON.parse(this.responseText);
+                    if (response.badSession) {
+                        window.location.href = "/login";
+                    }
+                    else if (response.error){
+                        sendFeedback(response.error);
+                    }
+                    // XXXXXXXXXXX HANDLE NO MOVES 
+                    // XXXXXXXXXXX HANDLE WIN
+                    // Handling your moves
+                    else {
+                        // Make clickable move squares
+                        response.moves.forEach(function (move) {
+                            let square = document.querySelector(move);
+                            square.setAttribute('fill', '#8FC412');
+                            square.classList.add('move');
+                            square.addEventListener("click", 
+                                makeMove
+                            );
+                        });
+                    }
+                }
+                xhttp.open("GET", "/api/moves?id=" + game.gID, true);
+                xhttp.setRequestHeader("Content-type", "application/json");
+                xhttp.withCredentials = true;
+                xhttp.send();
+            }
+
+            // Make a move
+            let makeMove = function (event) {
+                let square = event.target.getAttribute('id');
+                // Get rid of clickable squares
+                let moveSquares = document.getElementsByClassName('move');
+                for (let i = 0; i < moveSquares.length; i++) {
+                    console.log('test')
+                    moveSquares[i].setAttribute('fill', '#0E8F68')
+                    moveSquares[i].removeEventListener("click", makeMove);
+                    moveSquares[i].classList.remove('move');
+                }
+
+                // Split id into the row and col coords
+                let squareSplit = square.split('');
+                let row = squareSplit[6];
+                let col = squareSplit[7];
+
+                // Get list of moves
+                const xhttp = new XMLHttpRequest();
+                xhttp.onload = function() {
+                    // Error handling
+                    let response = JSON.parse(this.responseText);
+                    if (response.badSession) {
+                        window.location.href = "/login";
+                    }
+                    else if (response.error){
+                        sendFeedback(response.error);
+                    }
+                    else {
+                        // handled by chat
+                    }
+                }
+                xhttp.open("PUT", "/api/move", true);
+                xhttp.setRequestHeader("Content-type", "application/json");
+                xhttp.withCredentials = true;
+                xhttp.send(JSON.stringify({id: game.gID, row: row, col: col}));
+            }
+
+            // Handle displaying move
+            function handleMove(flips, moved, to) {
+                // Move the piece that was placed -- abrupt but i had no time to animate this its 1am
+                let square = document.querySelector(`#square${to[0]}${to[1]}`);
+                let movedPiece = document.querySelector(`#piece${moved}`);
+                let back = movedPiece.querySelector('.back');
+                back.setAttribute('cx', parseInt(square.getAttribute('x')) + 21);
+                back.setAttribute('cy', parseInt(square.getAttribute('y')) + 21);
+                let front = movedPiece.querySelector('.front');
+                front.setAttribute('cx', parseInt(square.getAttribute('x')) + 23);
+                front.setAttribute('cy', parseInt(square.getAttribute('y')) + 23);
+                if(movedPiece.classList.contains('black')) {
+                    movedPiece.animate([
+                        {transform:"rotate3d(0, 1, 0, 80deg)"},
+                        {transform:"rotate3d(0, 1, 0, 180deg)"}
+                    ],{
+                        duration: 1000,
+                        fill: 'forwards',
+                        ease: 'linear'
+                    });
+                }
+                else {
+                    movedPiece.animate([
+                        {transform:"rotate3d(0, 1, 0, 80deg)"},
+                        {transform:"rotate3d(0, 1, 0, 0deg)"}
+                    ],{
+                        duration: 1000,
+                        fill: 'forwards',
+                        ease: 'linear'
+                    });
+                }
+
+                // Flip the pieces that are outflanked
+                flips.forEach(function(loc) {
+                    let piece = document.querySelector(`#piece${loc}`);
+                    if(piece.classList.contains('black')) {
+                        setTimeout(function(){
+                            swapColors(piece.querySelector('.back'));
+                            swapColors(piece.querySelector('.front'));
+                            piece.querySelector('.back').setAttribute('cx', parseInt(piece.querySelector('.back').getAttribute('cx')) + 4);
+                        }, 500);
+                        piece.animate([
+                            {transform:"rotate3d(0)"},
+                            {transform:"rotate3d(0, 1, 0, 180deg)"}
+                        ],{
+                            duration: 1000,
+                            fill: 'forwards',
+                            ease: 'linear'
+                        });
+                        piece.classList.remove('black');
+                        piece.classList.add('white');
+                    }
+                    else {
+                        setTimeout(function(){
+                            swapColors(piece.querySelector('.back'));
+                            swapColors(piece.querySelector('.front'));
+                            piece.querySelector('.back').setAttribute('cx', parseInt(piece.querySelector('.back').getAttribute('cx')) - 4);
+                        }, 500);
+                        piece.animate([
+                            {transform:"rotate3d(0, 1, 0, 180deg)"},
+                            {transform:"rotate3d(0, 1, 0, 0deg)"}
+                        ],{
+                            duration: 1000,
+                            fill: 'forwards',
+                            ease: 'linear'
+                        });
+                        piece.classList.remove('white');
+                        piece.classList.add('black');
+                    }
+                });
+
+                // Handle moving to next turn
+                refreshGame();
+            }
+
+            // Swap colors when flipping a piece
+            function swapColors(part) {
+                if (part.getAttribute('fill') === '#F5FBF9') {
+                    part.setAttribute('fill', '#08110E');
+                }
+                else {
+                    part.setAttribute('fill', '#F5FBF9');
+                }
+            }
+
+            // Display feedback / errors
+            function sendFeedback(err) {
+                let paragraph = document.createElement('p');
+                let feedback = document.querySelector('#feedback');
+                paragraph.innerText = err;
+                paragraph.style.color = 'red';
+                feedback.appendChild(paragraph);
+                feedback.style.display = 'block';
+                feedback.focus()
+            }
+
+            // Board setup script that gets called FIRST
+            function boardSetup(board, pieces) {
+                let boardSVG = document.querySelector('#board');
+                // Loop to make squares
+                for (let i = 1; i <= 8; i++) {
+                    for (let j = 0; j < 8; j++) {
+                        let square = document.createElementNS(svgns, 'rect');
+                        square.setAttribute('id', `square${i - 1}${j}`) // id has coords, starting with 0 to match array indexing
+                        square.setAttribute('x', 2 + 50 * j);
+                        square.setAttribute('y', 2 + 50 * i);
+                        square.setAttribute('width', 46);
+                        square.setAttribute('height', 46);
+                        square.setAttribute('fill', '#0E8F68');
+                        boardSVG.appendChild(square);
+                    }
+                }
+                // Loop through board to place pieces played
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        let sq = board.rows[r].cols[c];
+                        if (sq.id) {
+                            // General piece group setup
+                            let piece = document.createElementNS(svgns, 'g');
+                            piece.setAttribute('id', `piece${sq.id}`);
+                            piece.classList.add(sq.color);
+                            piece.classList.add('piece');
+                            // Circles that make up piece (need square to determine pos)
+                            let square = document.querySelector(`#square${r}${c}`);
+                            let back = document.createElementNS(svgns, 'circle');
+                            back.setAttribute('cx', parseInt(square.getAttribute('x')) + 21);
+                            back.setAttribute('cy', parseInt(square.getAttribute('y')) + 21);
+                            back.setAttribute('r', 15);
+                            back.classList.add('back');
+                            let front = document.createElementNS(svgns, 'circle');
+                            front.setAttribute('cx', parseInt(square.getAttribute('x')) + 23);
+                            front.setAttribute('cy', parseInt(square.getAttribute('y')) + 23);
+                            front.setAttribute('r', 15);
+                            front.classList.add('front');
+                            // Making correct color face up
+                            if (sq.color == 'black') {
+                                front.setAttribute('fill', '#08110E');
+                                back.setAttribute('fill', '#F5FBF9')
+                            }
+                            else {
+                                back.setAttribute('fill', '#08110E');
+                                front.setAttribute('fill', '#F5FBF9');
+                            }
+                            // Add to page
+                            piece.appendChild(back);
+                            piece.appendChild(front);
+                            boardSVG.appendChild(piece);
+                        }
+                    }
+                }
+                // Loop through to make white player's reserve pieces
+                reservePieces(pieces.white, 'white');
+
+                // Loop through to make black player's reserve pieces
+                reservePieces(pieces.black, 'black');
+
+                // Set turn indicator so we can start game
+                changeTurn();
+            }
+
+            // Putting the spare pieces in reserve slots for each player
+            function reservePieces(pieces, color) {
+                let boardSVG = document.querySelector('#board');
+                let yPos = color == opponent.color ? 0 : 450; // slot we're putting the pieces in
+                let xPos = 125; // trying to center things a little 
+                // Loop through array to create and place
+                for (let i = 0; i < pieces.length; i++) {
+                    // General piece group setup
+                    let piece = document.createElementNS(svgns, 'g');
+                    piece.setAttribute('id', `piece${pieces[i]}`);
+                    piece.classList.add(color);
+                    piece.classList.add('piece');
+                    piece.style.transform = 'rotate3d(0, 1, 0, 80deg)';
+                    // Circles that make up piece
+                    let back = document.createElementNS(svgns, 'circle');
+                    back.setAttribute('cx', xPos + 5 * i);
+                    back.setAttribute('cy', yPos + 21);
+                    back.setAttribute('r', 15);
+                    back.classList.add('back');
+                    let front = document.createElementNS(svgns, 'circle');
+                    front.setAttribute('cx', xPos + 5 * i + 10);
+                    front.setAttribute('cy', yPos + 23);
+                    front.setAttribute('r', 15);
+                    front.classList.add('front');
+                    // Making correct color face up
+                    if (color == 'black') {
+                        front.setAttribute('fill', '#08110E');
+                        back.setAttribute('fill', '#F5FBF9')
+                    }
+                    else {
+                        back.setAttribute('fill', '#08110E');
+                        front.setAttribute('fill', '#F5FBF9');
+                    }
+                    // Add to page
+                    piece.appendChild(back);
+                    piece.appendChild(front);
+                    boardSVG.appendChild(piece);
+                }
+            }
+        </script>
+    </body>
+</html>
